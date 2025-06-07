@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info, SearchCheck, ThumbsDown, Send } from 'lucide-react';
+import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info, SearchCheck, ThumbsDown, Send, Search } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 
@@ -85,7 +85,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
   const handleDisputeVerdict = () => {
     toast({
       title: "Feedback Recorded",
-      description: `Your dispute for the claim "${result.claimText}" has been noted. Thank you for your feedback!`,
+      description: `Your dispute for the claim "${result.claimText.substring(0, 50)}..." has been noted. Thank you for your feedback!`,
       variant: "default"
     });
   };
@@ -93,7 +93,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
   const handleSubmitBetterSource = () => {
      toast({
       title: "Submit Source",
-      description: `The ability to submit a better source for "${result.claimText}" is coming soon.`,
+      description: `The ability to submit a better source for "${result.claimText.substring(0,50)}..." is coming soon.`,
       variant: "default"
     });
   };
@@ -131,9 +131,15 @@ export function ClaimCard({ result }: ClaimCardProps) {
                 <ShieldQuestion className="mr-2 h-5 w-5" /> Source Trust Analysis
               </AccordionTrigger>
               <AccordionContent className="font-body text-sm p-4 bg-muted/30 rounded-md space-y-3">
+                 {result.trustAnalysis.generatedSearchQuery && (
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <Search className="mr-1.5 h-3.5 w-3.5" /> 
+                    <span className="italic">Search query used: "{result.trustAnalysis.generatedSearchQuery}"</span>
+                  </div>
+                )}
                 {trustScorePercentage !== null && (
                   <div>
-                    <p className="font-medium">Overall Trust Score (from live search): {trustScorePercentage.toFixed(0)}%</p>
+                    <p className="font-medium">Overall Trust Score (from live DuckDuckGo search): {trustScorePercentage.toFixed(0)}%</p>
                     <Progress value={trustScorePercentage} className="h-2 mt-1" 
                       aria-label={`Trust score ${trustScorePercentage.toFixed(0)}%`} />
                   </div>
@@ -148,7 +154,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
           {result.sources && result.sources.length > 0 && (
             <AccordionItem value="sources">
               <AccordionTrigger className="font-headline text-base hover:no-underline text-primary">
-                <SearchCheck className="mr-2 h-5 w-5" /> Evidence Sources (from live search)
+                <SearchCheck className="mr-2 h-5 w-5" /> Evidence Sources (from DuckDuckGo)
               </AccordionTrigger>
               <AccordionContent className="font-body text-sm p-4 bg-muted/30 rounded-md">
                 <ul className="space-y-3">

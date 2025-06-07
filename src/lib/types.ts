@@ -1,11 +1,11 @@
 
 export type ClaimStatus = 'supported' | 'contradicted' | 'neutral' | 'pending' | 'error';
 
-export interface MockSource { // Renaming to "Source" for clarity as it can be real or mock
+export interface MockSource { 
   id: string;
   url: string;
   title: string;
-  trustScore?: number; // This might be an overall score or per source if available
+  trustScore?: number; 
   shortSummary?: string;
 }
 
@@ -15,11 +15,11 @@ export interface ClaimVerificationResult {
   status: ClaimStatus;
   explanation?: string;
   trustAnalysis?: {
-    score?: number; // Overall trust score for the claim based on analysis
+    score?: number; 
     reasoning?: string;
-    // We might not need a single sourceUrl here anymore if analysis uses multiple search results
+    generatedSearchQuery?: string; // Added to show which query was used
   };
-  sources?: MockSource[]; // Populated from (simulated) search results or other evidence
+  sources?: MockSource[]; 
   isProcessing: boolean;
   errorMessage?: string;
 }

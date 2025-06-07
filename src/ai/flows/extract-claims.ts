@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -17,7 +18,7 @@ const ExtractClaimsInputSchema = z.object({
 export type ExtractClaimsInput = z.infer<typeof ExtractClaimsInputSchema>;
 
 const ExtractClaimsOutputSchema = z.object({
-  claims: z.array(z.string()).describe('The extracted verifiable claims.'),
+  claims: z.array(z.string()).describe('The extracted verifiable claims. Each claim should be atomic, decontextualized, and understandable independently.'),
 });
 export type ExtractClaimsOutput = z.infer<typeof ExtractClaimsOutputSchema>;
 
@@ -29,12 +30,21 @@ const prompt = ai.definePrompt({
   name: 'extractClaimsPrompt',
   input: {schema: ExtractClaimsInputSchema},
   output: {schema: ExtractClaimsOutputSchema},
-  prompt: `You are an expert claim extractor. Your job is to extract verifiable claims from the given text.
+  prompt: `You are an expert claim extractor. Your job is to extract verifiable factual claims from the given text.
+Each extracted claim MUST be:
+1.  **Atomic**: It should represent a single, indivisible factual statement.
+2.  **Decontextualized**: It must be understandable on its own, without requiring the surrounding text.
+3.  **Verifiable**: It should be a statement that can be checked for truthfulness against evidence.
+4.  **Faithful**: It must accurately represent information stated or implied in the original text.
 
-  Text: {{{text}}}
+Do NOT extract opinions, questions, or non-factual statements.
 
-  Please provide the claims in an array of strings.
-  `,config: {
+Text:
+{{{text}}}
+
+Based on the criteria above, provide the extracted claims as an array of strings.
+`,
+  config: {
     safetySettings: [
       {
         category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
@@ -52,6 +62,10 @@ const extractClaimsFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+    if (!output || !output.claims) {
+      return { claims: [] };
+    }
+    return output;
   }
 );
+

@@ -12,6 +12,22 @@ const mapVerdictToStatus = (verdict: 'supported' | 'contradicted' | 'neutral'): 
   return verdict;
 };
 
+/**
+ * Placeholder for Smart Cache Check.
+ * In a full implementation, this would query a vector database (e.g., Pinecone, Chroma)
+ * for semantically similar, already verified claims.
+ * @param claimText The claim text to check in the cache.
+ * @returns A ClaimVerificationResult if a similar claim is found in cache, otherwise null.
+ */
+async function checkSmartCache(claimText: string): Promise<ClaimVerificationResult | null> {
+  console.log(`Smart Cache Check (Conceptual): Checking cache for claim: "${claimText.substring(0, 50)}..."`);
+  // STUB: In a real implementation, query a vector DB here.
+  // const cachedResult = await vectorDB.findSimilar(claimText);
+  // if (cachedResult && cachedResult.similarity > SOME_THRESHOLD) return cachedResult.data;
+  return null; // Simulate cache miss for now
+}
+
+
 export async function verifyClaimsInText(text: string): Promise<ClaimVerificationResult[]> {
   if (!text.trim()) {
     return [];
@@ -34,20 +50,37 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
     const results: ClaimVerificationResult[] = await Promise.all(
       extractedClaimStrings.map(async (claimText, index) => {
         const claimId = `claim-${Date.now()}-${index}`;
+
+        // 1. Smart Cache Check (Conceptual)
+        const cachedResult = await checkSmartCache(claimText);
+        if (cachedResult) {
+          console.log(`Smart Cache Hit for claim: "${claimText.substring(0,50)}..."`);
+          return { ...cachedResult, id: claimId, isProcessing: false };
+        }
+        console.log(`Smart Cache Miss for claim: "${claimText.substring(0,50)}..."`);
+
+        // 2. Tier Routing (Conceptual Placeholder)
+        // In a full system, logic here would determine which verification pipeline to use
+        // based on claim complexity, ambiguity, or other factors.
+        // For now, all claims go through the full default pipeline.
+        console.log(`Tier Routing (Conceptual): Default pipeline for claim: "${claimText.substring(0,50)}..."`);
+
         let actualSources: MockSource[] = [];
         let trustAnalysisData: ClaimVerificationResult['trustAnalysis'] = undefined;
         let finalExplanation = "No detailed explanation could be generated.";
         let finalStatus: ClaimStatus = 'neutral';
+        let explanationFromSubClaims = "Sub-claim analysis was not conclusive or did not provide reasoning.";
+        let reasoningFromTrustAnalysis = "Trust analysis did not yield specific reasoning.";
+        let generatedQueryForTrustAnalysis: string | undefined = undefined;
+
 
         try {
-          // 1. Sub-Claim Reasoning for primary verdict
+          // 3. Sub-Claim Reasoning for primary verdict
           const subClaimResult = await subClaimReasoning({ claim: claimText, maxIterations: 2 });
           finalStatus = mapVerdictToStatus(subClaimResult.overallVerdict);
-          // Initial explanation from sub-claim reasoning
-          let explanationFromSubClaims = subClaimResult.reasoning || "Sub-claim analysis did not provide a detailed reasoning.";
+          explanationFromSubClaims = subClaimResult.reasoning || "Sub-claim analysis did not provide detailed reasoning.";
 
-          // 2. Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
-          let reasoningFromTrustAnalysis = "Trust analysis did not yield specific reasoning.";
+          // 4. Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
           try {
             const trustChainResponse = await analyzeTrustChain({
               claimText: claimText,
@@ -56,8 +89,10 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             trustAnalysisData = {
               score: trustChainResponse.trustScore,
               reasoning: trustChainResponse.reasoning,
+              generatedSearchQuery: trustChainResponse.generatedSearchQuery,
             };
             reasoningFromTrustAnalysis = trustChainResponse.reasoning;
+            generatedQueryForTrustAnalysis = trustChainResponse.generatedSearchQuery;
 
             if (trustChainResponse.analyzedSources && trustChainResponse.analyzedSources.length > 0) {
               actualSources = trustChainResponse.analyzedSources.map((src, idx) => ({
@@ -71,30 +106,34 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
                     id: `fallback-src-${claimId}`,
                     url: '#',
                     title: 'No specific sources found by DuckDuckGo',
-                    shortSummary: 'The live search did not return specific sources for this claim.',
+                    shortSummary: 'The live search (DuckDuckGo) did not return specific sources for this claim.',
                 });
             }
           } catch (trustError) {
             console.warn(`Error in Trust Chain Analysis for claim "${claimText}":`, trustError);
-            reasoningFromTrustAnalysis = "Could not perform detailed source analysis due to an error.";
+            reasoningFromTrustAnalysis = "Could not perform detailed source analysis due to an error during trust chain analysis.";
             actualSources.push({ 
                 id: `err-src-${claimId}`, 
                 url: '#', 
                 title: 'Trust Analysis Error', 
-                shortSummary: 'Could not perform detailed source analysis.'
+                shortSummary: 'Could not perform detailed source analysis due to an error.'
             });
-            // Keep trustAnalysisData as undefined or with error markers if needed
             trustAnalysisData = {
-              score: 0, // Default to 0 on error
-              reasoning: "Error during trust analysis."
+              score: 0, 
+              reasoning: "Error during trust analysis execution.",
+              generatedSearchQuery: "Error in query generation/execution"
             };
           }
           
-          // 3. Generate Final AI Explanation using combined evidence
-          let evidenceForExplanation = `Sub-claim Analysis Verdict: ${subClaimResult.overallVerdict}.\nReasoning from sub-claims: ${explanationFromSubClaims}\n\n`;
-          evidenceForExplanation += `Trust & Source Analysis Reasoning: ${reasoningFromTrustAnalysis}\n`;
+          // 5. Generate Final AI Explanation using combined evidence
+          let evidenceForExplanation = `Claim: "${claimText}"\n`;
+          evidenceForExplanation += `Verdict from Sub-Claim Analysis: ${subClaimResult.overallVerdict}.\nReasoning from Sub-Claims: ${explanationFromSubClaims}\n\n`;
+          evidenceForExplanation += `Verdict from Trust & Source Analysis (Trust Score: ${trustAnalysisData?.score?.toFixed(2) ?? 'N/A'}):\nReasoning from Trust/Source Analysis: ${reasoningFromTrustAnalysis}\n`;
+          if (generatedQueryForTrustAnalysis) {
+            evidenceForExplanation += `Search Query Used for Trust Analysis: "${generatedQueryForTrustAnalysis}"\n`;
+          }
           if (actualSources.length > 0 && actualSources[0].id !== `fallback-src-${claimId}` && actualSources[0].id !== `err-src-${claimId}`) {
-              evidenceForExplanation += `Key sources considered: ${actualSources.map(s => s.title).slice(0,2).join('; ')}.`;
+              evidenceForExplanation += `Key Sources Considered (from DuckDuckGo): ${actualSources.map(s => s.title).slice(0,2).join('; ')}.`;
           } else {
               evidenceForExplanation += `No specific key sources were highlighted by the trust analysis.`;
           }
@@ -108,7 +147,8 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             finalExplanation = detailedExplanationResult.explanation;
           } catch (explanationError) {
              console.warn(`Error generating final AI explanation for claim "${claimText}":`, explanationError);
-             finalExplanation = explanationFromSubClaims; // Fallback to sub-claim reasoning if final explanation fails
+             // Fallback to a combination of available reasoning if final explanation fails
+             finalExplanation = `Sub-Claim Reasoning: ${explanationFromSubClaims}\n\nTrust Analysis Reasoning: ${reasoningFromTrustAnalysis}`;
           }
 
           return {
@@ -120,13 +160,14 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             sources: actualSources,
             isProcessing: false,
           };
-        } catch (error) {
+        } catch (error)
+        {
           console.error(`Error processing claim "${claimText}":`, error);
           return {
             id: claimId,
             claimText,
             status: 'error',
-            explanation: 'An error occurred during verification.',
+            explanation: 'An error occurred during the main verification pipeline for this claim.',
             errorMessage: error instanceof Error ? error.message : String(error),
             isProcessing: false,
             sources: [],
@@ -136,12 +177,12 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
     );
     return results;
   } catch (error) {
-    console.error('Error in verifyClaimsInText:', error);
+    console.error('Error in verifyClaimsInText (top level):', error);
     return [{
       id: 'error-general',
-      claimText: "Input Text Processing Error",
+      claimText: "Overall Input Text Processing Error",
       status: 'error',
-      explanation: "An error occurred while trying to process the input text.",
+      explanation: "An error occurred while trying to process the input text and extract claims.",
       errorMessage: error instanceof Error ? error.message : String(error),
       isProcessing: false,
       sources: []
