@@ -25,6 +25,7 @@ async function checkSmartCache(claimText: string): Promise<ClaimVerificationResu
   // STUB: In a real implementation, query a vector DB here.
   // const cachedResult = await vectorDB.findSimilar(claimText);
   // if (cachedResult && cachedResult.similarity > SOME_THRESHOLD) return cachedResult.data;
+  await new Promise(resolve => setTimeout(resolve, 100)); // Simulate async work
   return null; // Simulate cache miss for now
 }
 
@@ -35,6 +36,7 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
   }
 
   try {
+    // STAGE 1: Claim Extraction
     const { claims: extractedClaimStrings } = await extractClaims({ text });
 
     if (!extractedClaimStrings || extractedClaimStrings.length === 0) {
@@ -53,7 +55,7 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
       extractedClaimStrings.map(async (claimText, index) => {
         const claimId = `claim-${Date.now()}-${index}`;
 
-        // 1. Smart Cache Check (Conceptual)
+        // STAGE 2: Smart Cache Check (Conceptual)
         const cachedResult = await checkSmartCache(claimText);
         if (cachedResult) {
           console.log(`Smart Cache Hit for claim: "${claimText.substring(0,50)}..."`);
@@ -70,6 +72,7 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
         let actualSources: MockSource[] = [];
         let trustAnalysisData: ClaimVerificationResult['trustAnalysis'] = undefined;
         let finalExplanation = "No detailed explanation could be generated.";
+        let correctedInformation: string | undefined = undefined;
         let finalStatus: ClaimStatus = 'neutral';
         let explanationFromSubClaims = "Sub-claim analysis was not conclusive or did not provide reasoning.";
         let reasoningFromTrustAnalysis = "Trust analysis did not yield specific reasoning.";
@@ -79,7 +82,7 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
         let nuanceDesc: string | undefined = undefined;
 
         try {
-          // Evaluate Claim Quality
+          // STAGE 3: Evaluate Claim Quality
           try {
             claimQuality = await evaluateClaimQuality({ claimText, originalText: text });
           } catch (qualityError) {
@@ -91,14 +94,14 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             };
           }
 
-          // Sub-Claim Reasoning for primary verdict, confidence, and nuance
+          // STAGE 4: Sub-Claim Reasoning for primary verdict, confidence, and nuance
           const subClaimResult = await subClaimReasoning({ claim: claimText, maxIterations: 2 });
           finalStatus = mapVerdictToStatus(subClaimResult.overallVerdict);
           explanationFromSubClaims = subClaimResult.reasoning || "Sub-claim analysis did not provide detailed reasoning.";
           verdictConfidenceVal = subClaimResult.verdictConfidence;
           nuanceDesc = subClaimResult.nuanceDescription;
 
-          // Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
+          // STAGE 5: Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
           try {
             const trustChainResponse = await analyzeTrustChain({
               claimText: claimText,
@@ -118,13 +121,15 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
                 url: src.link,
                 title: src.title,
                 shortSummary: src.snippet,
+                type: src.type || 'Unknown',
               }));
             } else {
                 actualSources.push({
                     id: `fallback-src-${claimId}`,
                     url: '#',
-                    title: 'No specific sources found by DuckDuckGo',
-                    shortSummary: 'The live search (DuckDuckGo) did not return specific sources for this claim.',
+                    title: 'No specific sources found by Search API',
+                    shortSummary: 'The live search did not return specific sources for this claim.',
+                    type: 'NoResult'
                 });
             }
           } catch (trustError) {
@@ -134,7 +139,8 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
                 id: `err-src-${claimId}`, 
                 url: '#', 
                 title: 'Trust Analysis Error', 
-                shortSummary: 'Could not perform detailed source analysis due to an error.'
+                shortSummary: 'Could not perform detailed source analysis due to an error.',
+                type: 'Error'
             });
             trustAnalysisData = {
               score: 0, 
@@ -143,21 +149,21 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             };
           }
           
-          // Generate Final AI Explanation using combined evidence
-          let evidenceForExplanation = `Claim: "${claimText}"\n`;
+          // STAGE 6: Generate Final AI Explanation & Correction using combined evidence
+          let evidenceForExplanation = `Claim: "${claimText}"\nOriginal Text (Context): "${text.substring(0, 200)}..."\n`;
           if (claimQuality) {
-            evidenceForExplanation += `Claim Quality Assessment: ${claimQuality.overallAssessment}\n(Atomicity: ${claimQuality.atomicity}, Fluency: ${claimQuality.fluency}, Decontextualization: ${claimQuality.decontextualization}, Faithfulness: ${claimQuality.faithfulness}, Focus: ${claimQuality.focus}, Check-worthiness: ${claimQuality.checkworthiness})\n\n`;
+            evidenceForExplanation += `\n[Claim Quality Assessment]: ${claimQuality.overallAssessment}\n(Atomicity: ${claimQuality.atomicity}, Fluency: ${claimQuality.fluency}, Decontextualization: ${claimQuality.decontextualization}, Faithfulness: ${claimQuality.faithfulness}, Focus: ${claimQuality.focus}, Check-worthiness: ${claimQuality.checkworthiness})\n`;
           }
-          evidenceForExplanation += `Verdict from Sub-Claim Analysis: ${subClaimResult.overallVerdict} (Confidence: ${verdictConfidenceVal?.toFixed(2) ?? 'N/A'}).\nReasoning from Sub-Claims: ${explanationFromSubClaims}\n`;
+          evidenceForExplanation += `\n[Sub-Claim Analysis Verdict]: ${subClaimResult.overallVerdict} (Confidence: ${verdictConfidenceVal?.toFixed(2) ?? 'N/A'}).\nReasoning from Sub-Claims: ${explanationFromSubClaims}\n`;
           if (nuanceDesc) {
             evidenceForExplanation += `Nuance/Ambiguity: ${nuanceDesc}\n`;
           }
-          evidenceForExplanation += `\nVerdict from Trust & Source Analysis (Trust Score: ${trustAnalysisData?.score?.toFixed(2) ?? 'N/A'}):\nReasoning from Trust/Source Analysis: ${reasoningFromTrustAnalysis}\n`;
+          evidenceForExplanation += `\n[Trust & Source Analysis Trust Score]: ${trustAnalysisData?.score?.toFixed(2) ?? 'N/A'}\nReasoning from Trust/Source Analysis: ${reasoningFromTrustAnalysis}\n`;
           if (generatedQueryForTrustAnalysis) {
             evidenceForExplanation += `Search Query Used for Trust Analysis: "${generatedQueryForTrustAnalysis}"\n`;
           }
-          if (actualSources.length > 0 && actualSources[0].id !== `fallback-src-${claimId}` && actualSources[0].id !== `err-src-${claimId}`) {
-              evidenceForExplanation += `Key Sources Considered (from DuckDuckGo): ${actualSources.map(s => s.title).slice(0,2).join('; ')}.`;
+          if (actualSources.length > 0 && actualSources[0].type !== 'NoResult' && actualSources[0].type !== 'Error') {
+              evidenceForExplanation += `Key Sources Considered (from Search API): ${actualSources.map(s => s.title).slice(0,2).join('; ')}.`;
           } else {
               evidenceForExplanation += `No specific key sources were highlighted by the trust analysis.`;
           }
@@ -169,9 +175,12 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
                 verdict: subClaimResult.overallVerdict 
             });
             finalExplanation = detailedExplanationResult.explanation;
+            if (subClaimResult.overallVerdict === 'contradicted' && detailedExplanationResult.correctedInformation) {
+              correctedInformation = detailedExplanationResult.correctedInformation;
+            }
           } catch (explanationError) {
              console.warn(`Error generating final AI explanation for claim "${claimText}":`, explanationError);
-             finalExplanation = `Sub-Claim Reasoning: ${explanationFromSubClaims}\n\nTrust Analysis Reasoning: ${reasoningFromTrustAnalysis}`;
+             finalExplanation = `Error in explanation generation. Sub-Claim Reasoning: ${explanationFromSubClaims}\n\nTrust Analysis Reasoning: ${reasoningFromTrustAnalysis}`;
           }
 
           return {
@@ -179,6 +188,7 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             claimText,
             status: finalStatus,
             explanation: finalExplanation,
+            correctedInformation: correctedInformation,
             trustAnalysis: trustAnalysisData,
             sources: actualSources,
             isProcessing: false,
@@ -199,7 +209,7 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             isProcessing: false,
             sources: [],
             originalTextContext: text,
-            claimQualityMetrics: claimQuality, // Include potentially partial quality metrics
+            claimQualityMetrics: claimQuality, 
           };
         }
       })

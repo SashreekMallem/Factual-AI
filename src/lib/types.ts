@@ -8,7 +8,7 @@ export interface MockSource {
   title: string;
   trustScore?: number; 
   shortSummary?: string;
-  type?: string; // Added from trust-chain-analysis.ts
+  type?: string; 
 }
 
 export interface ClaimQualityMetrics {
@@ -26,6 +26,7 @@ export interface ClaimVerificationResult {
   claimText: string;
   status: ClaimStatus;
   explanation?: string;
+  correctedInformation?: string; // Added to store corrected info if claim is contradicted
   trustAnalysis?: {
     score?: number; 
     reasoning?: string;
@@ -38,4 +39,14 @@ export interface ClaimVerificationResult {
   verdictConfidence?: number;
   nuanceDescription?: string;
   originalTextContext?: string; 
+}
+
+// For the new loading animation
+export type ProcessingStepStatus = 'pending' | 'in-progress' | 'completed' | 'error';
+export interface DisplayedProcessingStep {
+  id: string;
+  text: string;
+  status: ProcessingStepStatus;
+  icon?: React.ElementType;
+  details?: string; // Optional additional details for the step
 }
