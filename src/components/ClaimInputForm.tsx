@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,13 +15,13 @@ import {
 } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Lightbulb } from 'lucide-react';
+import { Lightbulb, SearchCode } from 'lucide-react';
 
 const formSchema = z.object({
-  text: z.string().min(10, {
-    message: 'Please enter at least 10 characters to analyze.',
+  text: z.string().min(20, {
+    message: 'Please enter at least 20 characters for a comprehensive analysis.',
   }).max(5000, {
-    message: 'Text cannot exceed 5000 characters.'
+    message: 'Text cannot exceed 5000 characters for optimal performance.'
   }),
 });
 
@@ -38,17 +39,17 @@ export function ClaimInputForm({ onSubmit, isProcessing }: ClaimInputFormProps) 
   });
 
   return (
-    <Card className="w-full shadow-lg">
-      <CardHeader>
+    <Card className="w-full shadow-xl border-transparent overflow-hidden rounded-xl">
+      <CardHeader className="bg-muted/30 p-6">
         <CardTitle className="font-headline text-2xl text-primary flex items-center">
-          <Lightbulb className="mr-2 h-6 w-6" />
+          <Lightbulb className="mr-3 h-7 w-7" />
           Submit Text for Fact Verification
         </CardTitle>
-        <CardDescription className="font-body">
-          Enter a paragraph or document containing factual claims. Verity Engine will extract and analyze each claim.
+        <CardDescription className="font-body text-base mt-1">
+          Enter text containing factual claims. Verity Engine will meticulously extract, analyze, and verify each claim using advanced AI.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-6">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
@@ -56,25 +57,26 @@ export function ClaimInputForm({ onSubmit, isProcessing }: ClaimInputFormProps) 
               name="text"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="font-headline text-lg">Text to Analyze</FormLabel>
+                  <FormLabel className="font-headline text-lg sr-only">Text to Analyze</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Paste your text here... e.g., 'The Eiffel Tower is located in Paris, France and was completed in 1889. It is the tallest structure in the city.'"
-                      className="min-h-[150px] font-body text-base resize-none shadow-sm focus:ring-2 focus:ring-primary"
+                      placeholder="Example: The Amazon rainforest produces 20% of the world's oxygen. The Great Wall of China is visible from space. Water boils at 100 degrees Celsius at sea level."
+                      className="min-h-[180px] font-body text-base resize-y shadow-inner border-border/70 focus:ring-primary focus:border-primary rounded-lg p-4"
                       {...field}
                       disabled={isProcessing}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-red-500 dark:text-red-400" />
                 </FormItem>
               )}
             />
             <Button 
               type="submit" 
-              className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-headline text-lg py-3 px-6 rounded-md shadow-md hover:shadow-lg transition-shadow duration-200" 
+              className="w-full sm:w-auto bg-primary hover:bg-primary/80 text-primary-foreground font-headline text-lg py-3.5 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group" 
               disabled={isProcessing}
             >
-              {isProcessing ? 'Analyzing...' : 'Verify Claims'}
+              <SearchCode className="mr-2.5 h-5 w-5 group-hover:animate-pulse" />
+              {isProcessing ? 'Analyzing Deeply...' : 'Verify Claims'}
             </Button>
           </form>
         </Form>

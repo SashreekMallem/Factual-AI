@@ -1,4 +1,5 @@
 
+
 export type ClaimStatus = 'supported' | 'contradicted' | 'neutral' | 'pending' | 'error';
 
 export interface MockSource { 
@@ -7,6 +8,7 @@ export interface MockSource {
   title: string;
   trustScore?: number; 
   shortSummary?: string;
+  type?: string; // Added from trust-chain-analysis.ts
 }
 
 export interface ClaimQualityMetrics {
@@ -35,5 +37,5 @@ export interface ClaimVerificationResult {
   claimQualityMetrics?: ClaimQualityMetrics;
   verdictConfidence?: number;
   nuanceDescription?: string;
-  originalTextContext?: string; // To store the original text for quality evaluation context
+  originalTextContext?: string; 
 }
