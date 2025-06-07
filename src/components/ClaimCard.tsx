@@ -2,11 +2,11 @@
 'use client';
 
 import type { ClaimVerificationResult, ClaimStatus, MockSource } from '@/lib/types';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldCheck, Info, SearchCheck, ThumbsDown, Send, Search, Microscope, Percent, FileText, BookOpen, Brain, BarChart3, AlertOctagon, Atom, Blend, Languages, TestTube2, Pin, History, Quote, Sigma, CheckCheck, Sparkles, ListTree, FileSignature, Scale, Lightbulb } from 'lucide-react';
+import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldCheck, Info, SearchCheck, ThumbsDown, Send, Search, Microscope, Percent, FileText, BookOpen, Brain, BarChart3, AlertOctagon, Atom, Blend, Languages, TestTube2, Pin, History, Quote, Sigma, CheckCheck, Sparkles, ListTree, FileSignature, Scale, Lightbulb, CircleDotDashed, CircleSlash, Zap, PackageCheck } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,7 +16,7 @@ interface ClaimCardProps {
 }
 
 const StatusIcon = ({ status, size = "h-7 w-7" }: { status: ClaimStatus; size?: string }) => {
-  const iconClass = `${size} mr-2.5`;
+  const iconClass = `${size} mr-2.5 shrink-0`;
   switch (status) {
     case 'supported':
       return <CheckCircle2 className={`${iconClass} text-green-500 dark:text-green-400`} />;
@@ -49,7 +49,7 @@ const getStatusColors = (status: ClaimStatus): { badge: string; border: string; 
 };
 
 const QualityMetricItem: React.FC<{ label: string; value?: string | number | null; Icon: React.ElementType; tooltipText: string }> = ({ label, value, Icon, tooltipText }) => {
-  if (!value) return null;
+  if (!value && value !== 0) return null; // Also render if value is 0, e.g. for scores
   const rating = String(value).toLowerCase();
   let colorClass = "text-muted-foreground";
   if (['high', 'good', 'specific'].includes(rating)) colorClass = "text-green-600 dark:text-green-400";
@@ -62,10 +62,10 @@ const QualityMetricItem: React.FC<{ label: string; value?: string | number | nul
         <div className="flex items-center space-x-2 p-2.5 bg-background/60 dark:bg-background/30 rounded-lg border border-border/50 hover:shadow-md transition-shadow">
           <Icon className={`h-5 w-5 shrink-0 ${colorClass}`} />
           <span className="font-medium text-sm text-foreground/80">{label}:</span>
-          <span className={`text-sm font-bold capitalize ${colorClass}`}>{value}</span>
+          <span className={`text-sm font-bold capitalize ${colorClass}`}>{String(value)}</span>
         </div>
       </TooltipTrigger>
-      <TooltipContent className="bg-popover text-popover-foreground shadow-lg rounded-md p-2 max-w-xs">
+      <TooltipContent className="bg-popover text-popover-foreground shadow-lg rounded-md p-2 max-w-xs z-50">
         <p>{tooltipText}</p>
       </TooltipContent>
     </Tooltip>
@@ -85,8 +85,8 @@ const InvestigationStep: React.FC<InvestigationStepProps> = ({ stepNumber, title
   <AccordionItem value={value} className="border-b-0 mb-1 overflow-hidden rounded-lg shadow-sm bg-card border border-border/50">
     <AccordionTrigger className="font-headline text-lg hover:no-underline text-primary hover:bg-primary/5 dark:hover:bg-primary/10 px-4 py-3.5 rounded-t-lg data-[state=open]:bg-primary/10 data-[state=open]:text-primary transition-colors">
       <div className="flex items-center">
-        <span className="mr-3 flex h-7 w-7 items-center justify-center rounded-full bg-primary/80 text-primary-foreground text-sm font-bold">{stepNumber}</span>
-        <Icon className="mr-3 h-5 w-5 text-primary/90" /> {title}
+        <span className="mr-3 flex h-7 w-7 items-center justify-center rounded-full bg-primary/80 text-primary-foreground text-sm font-bold shrink-0">{stepNumber}</span>
+        <Icon className="mr-3 h-5 w-5 text-primary/90 shrink-0" /> {title}
       </div>
     </AccordionTrigger>
     <AccordionContent className="font-body text-sm leading-relaxed p-4 md:p-5 bg-muted/20 dark:bg-muted/10 rounded-b-lg border-t border-primary/20">
@@ -122,30 +122,35 @@ export function ClaimCard({ result }: ClaimCardProps) {
 
   const handleDisputeVerdict = () => {
     toast({
-      title: "Feedback Acknowledged",
-      description: `Your dispute for the claim has been logged. This aids in Verity Engine's refinement.`,
+      title: "Feedback Protocol Engaged",
+      description: `Your dispute for the claim has been logged for system calibration. Verity Engine learns from critical human oversight.`,
       variant: "default",
     });
   };
 
   const handleSubmitBetterSource = () => {
      toast({
-      title: "Source Submission",
-      description: `Thank you for your input. The source submission channel is currently under advanced calibration.`,
+      title: "Source Uplink Initialized",
+      description: `Thank you for contributing to the Verity Engine's knowledge base. The source submission channel is under continuous refinement.`,
       variant: "default",
     });
   };
+
+  const validSourceTypesToExclude = ['NoSpecificResults', 'APIError', 'ToolExecutionError', 'NoResult', 'Error'];
+  const actualSources = result.sources?.filter(s => !validSourceTypesToExclude.includes(s.type ?? ''));
+  const hasActualSources = actualSources && actualSources.length > 0;
+
 
   return (
     <TooltipProvider>
       <Card className={`my-8 shadow-2xl rounded-xl overflow-hidden border-2 ${statusColors.border} ${statusColors.bg}`}>
         <CardHeader className={`p-5 sm:p-6 border-b-2 ${statusColors.border} ${statusColors.headerBg}`}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0 mb-3">
-            <div className="flex items-center flex-1 min-w-0">
-                <Quote className="h-7 w-7 text-primary mr-3 shrink-0" />
+            <div className="flex items-start flex-1 min-w-0"> {/* Changed items-center to items-start */}
+                <Quote className="h-7 w-7 text-primary mr-3 shrink-0 mt-1" /> {/* Added mt-1 for alignment */}
                 <CardTitle className="font-headline text-xl md:text-2xl leading-tight text-foreground pr-2 flex-1">{result.claimText}</CardTitle>
             </div>
-            <div className="flex flex-col items-start sm:items-end space-y-1.5 shrink-0">
+            <div className="flex flex-col items-start sm:items-end space-y-1.5 shrink-0 self-start sm:self-center"> {/* Added self-start / self-center */}
               <Badge className={`capitalize whitespace-nowrap px-4 py-2 text-md font-bold shadow-md ${statusColors.badge} border-2`}>
                 <StatusIcon status={result.status} />
                 <span className="ml-1">{result.status}</span>
@@ -163,7 +168,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
                       <span className="text-sm font-semibold text-primary/90">AI Verdict Confidence:</span>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent className="bg-popover text-popover-foreground shadow-lg rounded-md p-2 max-w-xs">
+                  <TooltipContent className="bg-popover text-popover-foreground shadow-lg rounded-md p-2 max-w-xs z-50">
                     <p>The AI's calculated confidence level in the assigned verdict for this claim, based on the totality of analyzed evidence.</p>
                   </TooltipContent>
                 </Tooltip>
@@ -173,7 +178,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
             </div>
           )}
 
-          {result.isProcessing && <CardDescription className="font-body text-sm text-primary mt-2">Processing...</CardDescription>}
+          {result.isProcessing && <CardDescription className="font-body text-sm text-primary mt-2 flex items-center"><Loader2 className="animate-spin h-4 w-4 mr-2"/>Processing...</CardDescription>}
           {result.errorMessage && (
             <div className="mt-3 p-3 bg-red-100 dark:bg-red-900/50 border border-red-400 dark:border-red-700 rounded-md text-sm text-red-700 dark:text-red-300 flex items-start space-x-2">
               <AlertOctagon className="h-5 w-5 shrink-0 mt-0.5"/>
@@ -258,11 +263,11 @@ export function ClaimCard({ result }: ClaimCardProps) {
                     )}
                 </div>
 
-                {result.sources && result.sources.length > 0 && result.sources.some(s => s.title !== 'No specific sources found by Search API' && s.type !== 'NoResult' && s.type !== 'Error') && (
+                {hasActualSources && (
                   <div className="my-5 pt-4 border-t border-border/60">
                     <h3 className="font-headline text-md text-foreground mb-3 flex items-center"><BookOpen className="mr-2 h-5 w-5 text-primary/80"/>Retrieved Evidence Snippets (from Search API):</h3>
                     <ul className="space-y-3">
-                      {result.sources.filter(s => s.title !== 'No specific sources found by Search API' && s.type !== 'NoResult' && s.type !== 'Error').map((source: MockSource) => (
+                      {actualSources.map((source: MockSource) => (
                         <li key={source.id} className="p-3.5 bg-background/70 dark:bg-background/40 rounded-lg border border-border/70 shadow-sm hover:shadow-md transition-shadow">
                           <a href={source.url} target="_blank" rel="noopener noreferrer" className="group text-accent hover:text-accent/80 dark:text-accent-light dark:hover:text-accent-light/80 font-medium block text-base mb-1.5" title={source.url}>
                             {source.title || "Untitled Source"} <ExternalLink className="inline h-4 w-4 ml-1 opacity-70 group-hover:opacity-100 transition-opacity" />
@@ -279,7 +284,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
             
           </Accordion>
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row justify-end items-center space-y-2 sm:space-y-0 sm:space-x-3 p-4 border-t-2 border-border/60 bg-muted/30 dark:bg-muted/20">
+        <CardFooter className="flex flex-col sm:flex-row justify-end items-center space-y-3 sm:space-y-0 sm:space-x-3 p-4 border-t-2 border-border/60 bg-muted/30 dark:bg-muted/20">
           <Button variant="outline" size="sm" className="font-headline text-sm text-accent border-accent hover:bg-accent/10 hover:text-accent w-full sm:w-auto" onClick={handleDisputeVerdict}>
             <ThumbsDown className="mr-2 h-4 w-4" />
             Dispute Verdict
@@ -293,4 +298,3 @@ export function ClaimCard({ result }: ClaimCardProps) {
     </TooltipProvider>
   );
 }
-
