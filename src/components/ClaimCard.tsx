@@ -1,3 +1,4 @@
+
 'use client';
 
 import { ClaimVerificationResult, ClaimStatus, MockSource } from '@/lib/types';
@@ -5,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info } from 'lucide-react';
+import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info, SearchCheck } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 
 interface ClaimCardProps {
@@ -32,11 +33,11 @@ const StatusIcon = ({ status }: { status: ClaimStatus }) => {
 const getStatusBadgeVariant = (status: ClaimStatus): "default" | "secondary" | "destructive" | "outline" => {
   switch (status) {
     case 'supported':
-      return 'default'; // Consider custom variant for green
+      return 'default'; 
     case 'contradicted':
       return 'destructive';
     case 'neutral':
-      return 'secondary'; // Consider custom variant for yellow/orange
+      return 'secondary'; 
     default:
       return 'outline';
   }
@@ -103,25 +104,23 @@ export function ClaimCard({ result }: ClaimCardProps) {
             </AccordionItem>
           )}
 
-          {result.trustAnalysis && (
+          {result.trustAnalysis && (result.trustAnalysis.reasoning || trustScorePercentage !== null) && (
             <AccordionItem value="trust-analysis">
               <AccordionTrigger className="font-headline text-base hover:no-underline text-primary">
                 <ShieldQuestion className="mr-2 h-5 w-5" /> Source Trust Analysis
               </AccordionTrigger>
               <AccordionContent className="font-body text-sm p-4 bg-muted/30 rounded-md space-y-3">
-                {result.trustAnalysis.sourceUrl && (
-                  <p>
-                    Analyzed Source: <a href={result.trustAnalysis.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline break-all">{result.trustAnalysis.sourceUrl} <ExternalLink className="inline h-3 w-3 ml-0.5" /></a>
-                  </p>
-                )}
+                {/* The concept of a single 'Analyzed Source URL' is less direct now,
+                    as analysis is based on broader (simulated) search.
+                    The reasoning field should cover this. */}
                 {trustScorePercentage !== null && (
                   <div>
-                    <p>Trust Score: {trustScorePercentage.toFixed(0)}%</p>
+                    <p>Overall Trust Score (based on simulated search): {trustScorePercentage.toFixed(0)}%</p>
                     <Progress value={trustScorePercentage} className="h-2 mt-1" />
                   </div>
                 )}
                 {result.trustAnalysis.reasoning && (
-                   <p>Reasoning: {result.trustAnalysis.reasoning}</p>
+                   <p className="mt-2">Reasoning: {result.trustAnalysis.reasoning}</p>
                 )}
               </AccordionContent>
             </AccordionItem>
@@ -130,17 +129,17 @@ export function ClaimCard({ result }: ClaimCardProps) {
           {result.sources && result.sources.length > 0 && (
             <AccordionItem value="sources">
               <AccordionTrigger className="font-headline text-base hover:no-underline text-primary">
-                <ListChecks className="mr-2 h-5 w-5" /> Mock Evidence Sources
+                <SearchCheck className="mr-2 h-5 w-5" /> Evidence Sources (from simulated search)
               </AccordionTrigger>
               <AccordionContent className="font-body text-sm p-4 bg-muted/30 rounded-md">
-                <ul className="space-y-2">
+                <ul className="space-y-3">
                   {result.sources.map((source: MockSource) => (
-                    <li key={source.id} className="border-b border-border/50 pb-2 last:border-b-0 last:pb-0">
-                      <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium block truncate">
-                        {source.title} <ExternalLink className="inline h-3 w-3 ml-0.5" />
+                    <li key={source.id} className="border-b border-border/50 pb-3 last:border-b-0 last:pb-0">
+                      <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium block truncate text-base">
+                        {source.title} <ExternalLink className="inline h-4 w-4 ml-1" />
                       </a>
-                      {source.trustScore && <p className="text-xs text-muted-foreground">Est. Trust: {(source.trustScore * 100).toFixed(0)}%</p>}
-                      {source.shortSummary && <p className="text-xs mt-0.5">{source.shortSummary}</p>}
+                      {source.shortSummary && <p className="text-xs mt-1 text-muted-foreground">{source.shortSummary}</p>}
+                      {/* Individual trust scores per source might not be available from the overall analysis */}
                     </li>
                   ))}
                 </ul>

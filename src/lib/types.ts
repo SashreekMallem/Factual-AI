@@ -1,23 +1,25 @@
+
 export type ClaimStatus = 'supported' | 'contradicted' | 'neutral' | 'pending' | 'error';
 
-export interface MockSource {
+export interface MockSource { // Renaming to "Source" for clarity as it can be real or mock
   id: string;
   url: string;
   title: string;
-  trustScore?: number;
+  trustScore?: number; // This might be an overall score or per source if available
   shortSummary?: string;
 }
+
 export interface ClaimVerificationResult {
-  id: string;
+  id:string;
   claimText: string;
   status: ClaimStatus;
-  explanation?: string; // Primary explanation from subClaimReasoning or generateExplanation
-  trustAnalysis?: { // From Trust Chain Analysis on a representative source
-    score?: number;
+  explanation?: string;
+  trustAnalysis?: {
+    score?: number; // Overall trust score for the claim based on analysis
     reasoning?: string;
-    sourceUrl?: string;
+    // We might not need a single sourceUrl here anymore if analysis uses multiple search results
   };
-  sources?: MockSource[]; // Mocked for UI demonstration
+  sources?: MockSource[]; // Populated from (simulated) search results or other evidence
   isProcessing: boolean;
   errorMessage?: string;
 }

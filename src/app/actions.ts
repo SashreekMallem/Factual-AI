@@ -1,9 +1,10 @@
+
 'use server';
 
 import { extractClaims } from '@/ai/flows/extract-claims';
 import { subClaimReasoning } from '@/ai/flows/sub-claim-reasoning';
 import { analyzeTrustChain } from '@/ai/flows/trust-chain-analysis';
-import type { ClaimVerificationResult, ClaimStatus } from '@/lib/types';
+import type { ClaimVerificationResult, ClaimStatus, MockSource } from '@/lib/types';
 import { generateExplanation } from '@/ai/flows/ai-explanation';
 
 // Helper to map subClaimReasoning verdict to ClaimStatus
@@ -33,6 +34,9 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
     const results: ClaimVerificationResult[] = await Promise.all(
       extractedClaimStrings.map(async (claimText, index) => {
         const claimId = `claim-${Date.now()}-${index}`;
+        let trustAnalysisData;
+        let actualSources: MockSource[] = [];
+
         try {
           // 1. Sub-Claim Reasoning for primary verdict and explanation
           const subClaimResult = await subClaimReasoning({ claim: claimText, maxIterations: 2 });
@@ -40,35 +44,54 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
           let finalStatus = mapVerdictToStatus(subClaimResult.overallVerdict);
           let finalExplanation = subClaimResult.reasoning;
 
-          // 2. Trust Chain Analysis (on a mock representative source)
-          // In a real system, this source would be dynamically retrieved based on the claim.
-          const mockSourceUrl = `https://en.wikipedia.org/wiki/${claimText.substring(0,20).replace(/\s/g, '_')}`;
-          const mockSourceContent = `Mock evidence related to: ${claimText}. This content is illustrative.`;
+          // 2. Trust Chain Analysis (using the claim text for search context)
+          // The mockSourceUrl is illustrative of a potential starting point.
+          const mockStartingSourceUrl = `https://en.wikipedia.org/wiki/${claimText.substring(0,20).replace(/\s/g, '_')}`;
           
-          let trustAnalysisData;
           try {
             const trustChainResponse = await analyzeTrustChain({
-              sourceContent: mockSourceContent,
-              sourceUrl: mockSourceUrl,
+              claimText: claimText,
+              sourceUrl: mockStartingSourceUrl, // This can be used by the LLM as initial context if needed
             });
             trustAnalysisData = {
               score: trustChainResponse.trustScore,
               reasoning: trustChainResponse.reasoning,
-              sourceUrl: mockSourceUrl,
+              // sourceUrl is not directly comparable as it's now based on search
             };
+            if (trustChainResponse.analyzedSources && trustChainResponse.analyzedSources.length > 0) {
+              actualSources = trustChainResponse.analyzedSources.map((src, idx) => ({
+                id: `trust-src-${claimId}-${idx}`,
+                url: src.link,
+                title: src.title,
+                shortSummary: src.snippet,
+                // trustScore per source is not provided by this flow, only an overall score.
+              }));
+            } else {
+               // Fallback if no sources returned from analysis
+                actualSources.push({
+                    id: `fallback-src-${claimId}`,
+                    url: '#',
+                    title: 'General Information (from simulated search)',
+                    shortSummary: 'Analysis based on simulated general search.',
+                });
+            }
+
           } catch (trustError) {
             console.warn(`Error in Trust Chain Analysis for claim "${claimText}":`, trustError);
-            // Non-fatal, proceed without trust data
+            actualSources.push({ 
+                id: `err-src-${claimId}`, 
+                url: '#', 
+                title: 'Trust Analysis Error', 
+                shortSummary: 'Could not perform detailed source analysis.'
+            });
           }
           
-          // 3. (Optional) AI Explanation if sub-claim reasoning is not detailed enough or to showcase
-          // For this scaffold, subClaimResult.reasoning is typically sufficient.
-          // If verdict is neutral and reasoning is sparse, we might call generateExplanation.
+          // 3. (Optional) AI Explanation 
           if (finalStatus === 'neutral' && (!finalExplanation || finalExplanation.length < 50)) {
              try {
                 const detailedExplanation = await generateExplanation({
                     claim: claimText,
-                    evidence: "Based on available information and sub-claim analysis.",
+                    evidence: trustAnalysisData?.reasoning || "Based on available information and sub-claim analysis.",
                     verdict: subClaimResult.overallVerdict
                 });
                 finalExplanation = detailedExplanation.explanation;
@@ -82,11 +105,8 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             claimText,
             status: finalStatus,
             explanation: finalExplanation || "No detailed explanation available.",
-            trustAnalysis: trustAnalysisData,
-            sources: [ // Mock sources for UI demonstration
-              { id: 'src1', url: trustAnalysisData?.sourceUrl || '#', title: trustAnalysisData?.sourceUrl ? new URL(trustAnalysisData.sourceUrl).hostname : 'Primary Mock Source', trustScore: trustAnalysisData?.score, shortSummary: 'Retrieved from mock source.' },
-              { id: 'src2', url: '#', title: 'Secondary Mock Source', trustScore: 0.65, shortSummary: 'Another supporting document.' },
-            ],
+            trustAnalysis: trustAnalysisData, // Contains overall trust score and reasoning
+            sources: actualSources, // Now populated from (simulated) search results
             isProcessing: false,
           };
         } catch (error) {
@@ -106,7 +126,6 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
     return results;
   } catch (error) {
     console.error('Error in verifyClaimsInText:', error);
-    // Return a single error result if the whole process fails (e.g., claim extraction)
     return [{
       id: 'error-general',
       claimText: "Input Text Processing Error",
