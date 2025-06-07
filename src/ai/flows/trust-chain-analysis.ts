@@ -1,8 +1,8 @@
-
 'use server';
 
 /**
  * @fileOverview Analyzes the trust chain of evidence sources to understand information reliability, using a live internet search tool (DuckDuckGo API) and LLM-generated search queries.
+ * It simulates deeper trust chain reasoning by prompting the LLM to speculate on source provenance.
  *
  * - analyzeTrustChain - Analyzes the trust chain of evidence sources.
  * - TrustChainAnalysisInput - Input for the trust chain analysis.
@@ -63,13 +63,13 @@ const internetSearchTool = ai.defineTool(
         console.error(`DuckDuckGo API request failed with status: ${response.status}`);
         return { searchResults: [{
           title: "Search API Error",
-          link: `https://duckduckgo.com/?q=${encodeURIComponent(query)}`, // Corrected fallback link
+          link: `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
           snippet: `DuckDuckGo API request failed for query: ${query.substring(0,100)}...`
         }] };
       }
 
       const data = await response.json();
-      console.log(`DuckDuckGo API response for query "${query}":`, JSON.stringify(data, null, 2));
+      // console.log(`DuckDuckGo API response for query "${query}":`, JSON.stringify(data, null, 2));
 
 
       if (data.AbstractText) {
@@ -79,7 +79,7 @@ const internetSearchTool = ai.defineTool(
           link: abstractLink,
           snippet: data.AbstractText,
         });
-         console.log(`Added abstract result: ${data.Heading} - ${abstractLink}`);
+         // console.log(`Added abstract result: ${data.Heading} - ${abstractLink}`);
       }
 
       if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
@@ -94,19 +94,19 @@ const internetSearchTool = ai.defineTool(
                     link: topic.FirstURL,
                     snippet: snippet,
                 });
-                console.log(`Added related topic: ${title} - ${topic.FirstURL}`);
+                // console.log(`Added related topic: ${title} - ${topic.FirstURL}`);
             }
           }
         });
       }
       
-      if (searchResults.length === 0 && data.Heading && data.Type === 'A') {
+      if (searchResults.length === 0 && data.Heading && data.Type === 'A' && data.AbstractText === '') { // Only add if AbstractText was empty
          searchResults.push({
           title: data.Heading,
           link: `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
-          snippet: "General information found on DuckDuckGo."
+          snippet: "General information or definition found on DuckDuckGo."
         });
-        console.log(`Added heading as result: ${data.Heading}`);
+        // console.log(`Added heading as result: ${data.Heading}`);
       }
 
     } catch (error) {
@@ -124,9 +124,9 @@ const internetSearchTool = ai.defineTool(
             link: `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
             snippet: "DuckDuckGo Instant Answer API did not return specific articles. Try rephrasing or use a broader search engine for deeper results."
         });
-        console.log(`No specific results found for query: ${query}`);
+        // console.log(`No specific results found for query: ${query}`);
     }
-    console.log("Final search results from tool:", searchResults);
+    // console.log("Final search results from tool:", searchResults);
     return { searchResults };
   }
 );
@@ -139,8 +139,8 @@ const TrustChainAnalysisInputSchema = z.object({
 export type TrustChainAnalysisInput = z.infer<typeof TrustChainAnalysisInputSchema>;
 
 const TrustChainAnalysisOutputSchema = z.object({
-  trustScore: z.number().min(0).max(1).describe('A score between 0 and 1 representing the trustworthiness of the information surrounding the claim, based on live search results from DuckDuckGo. Consider the authority and relevance of sources found (e.g., .gov, .edu domains, Wikipedia are generally more trustworthy than personal blogs). Also consider if links were accessible or seemed outdated.'),
-  reasoning: z.string().describe('Explanation of how the trust score was determined, referencing search findings from DuckDuckGo. Comment on the perceived authority and relevance of the found sources. If any provided links seemed broken or led to "page not found," mention this and explain how you used snippet information or corroboration instead.'),
+  trustScore: z.number().min(0).max(1).describe('A score between 0 and 1 representing the trustworthiness of the information surrounding the claim, based on live search results from DuckDuckGo and a simulated analysis of the plausible trust chain. Consider the authority and relevance of sources found, how many steps removed they likely are from primary information, and if links were accessible.'),
+  reasoning: z.string().describe('Explanation of how the trust score was determined, referencing search findings from DuckDuckGo and reasoning about the plausible trust chain for key pieces of evidence. Comment on the perceived authority, relevance, and likely provenance of the found sources. If any provided links seemed broken or led to "page not found," mention this and explain how snippet information or corroboration was used instead. Describe the simulated trust chain for key pieces of evidence.'),
   analyzedSources: z.array(SearchResultSchema).optional().describe('Top search results from DuckDuckGo used for analysis if the tool was invoked.'),
   generatedSearchQuery: z.string().optional().describe('The primary search query that was generated by the LLM and used with the internetSearchTool.'),
 });
@@ -158,36 +158,42 @@ const trustChainAnalysisPrompt = ai.definePrompt({
     searchQueryUsed: z.string(),
   })},
   output: {schema: TrustChainAnalysisOutputSchema},
-  prompt: `You are an expert in evaluating the trustworthiness of online information related to a specific claim.
-You are given a claim. An optimal search query has already been generated and used to search the internet via DuckDuckGo Instant Answer API.
+  prompt: `You are an expert in evaluating the trustworthiness of online information and tracing information provenance related to a specific claim.
+You are given a claim. An optimal search query has already been generated and used to search the internet via DuckDuckGo Instant Answer API, providing initial search results.
 
 Claim: {{{claimText}}}
 Search Query Used: {{{searchQueryUsed}}}
 
 Instructions:
 1.  CRITICAL: Use the 'internetSearchTool' with the provided 'searchQueryUsed' to find relevant information about the claim. The tool uses DuckDuckGo's Instant Answer API, which provides summaries and may sometimes have outdated links.
-2.  Based on the search results:
-    a.  Evaluate the general trustworthiness and consensus surrounding the claim.
-    b.  Pay attention to the *types* of sources found (e.g., are they from .gov, .edu domains, Wikipedia, reputable news organizations, or personal blogs/forums?).
-    c.  Consider the relevance and apparent authority of these sources.
-    d.  **Important**: Acknowledge that links from automated searches can sometimes be outdated or lead to "page not found." If you suspect a link is broken or the content is irrelevant, rely more on the provided snippet and seek corroboration from other snippets if possible.
-3.  Assign a trust score between 0.0 and 1.0 (where 1.0 is most trustworthy). This score should reflect your assessment of the sources found. A higher score should be given if authoritative and relevant sources are found with accessible information. A lower score if sources are scarce, low-quality, contradictory, or if links are largely inaccessible making snippet analysis the only option.
-4.  Provide a brief explanation of your reasoning.
-    *   Reference significant findings from your search (e.g., "DuckDuckGo results included a .gov site which supports X...").
-    *   Explicitly comment on the perceived authority of the sources.
-    *   **If link accessibility was an issue for some sources, mention this in your reasoning** and explain how you adjusted your assessment (e.g., "The link to 'Example Source' appeared broken, so I relied on its snippet which suggested...").
+2.  Based on the search results, analyze each significant piece of evidence. For each, consider:
+    a.  The **type of source** (e.g., .gov, .edu, Wikipedia, reputable news, blog, forum).
+    b.  The **content of the snippet**.
+    c.  **Plausible Provenance (Simulated Trust Chain):**
+        *   How many steps removed from an original source (e.g., primary research, official report, eyewitness account) do you estimate this information to be?
+        *   What kind of primary information might this source be based on (e.g., if it's a news article summarizing a study, the study itself is closer to the origin)?
+        *   If a source mentions 'a study,' 'researchers found,' or 'experts say,' but doesn't directly link to or name the original, how does that affect its immediate verifiability and your confidence in it as a primary piece of evidence for *this* analysis?
+    d.  **Link Accessibility**: Acknowledge if links from the search tool appear outdated or lead to "page not found." If so, rely more on the snippet and look for corroboration.
+3.  Synthesize your findings for the overall claim:
+    a.  Evaluate the general trustworthiness and consensus surrounding the claim based on your analysis of the simulated trust chains of the evidence found.
+    b.  Assign a trust score between 0.0 and 1.0 (where 1.0 is most trustworthy). This score should reflect your assessment of the sources found AND your confidence in the plausible provenance of the information. Information that seems many steps removed from an original source, or whose origins are very unclear from the snippets, should generally receive a lower trust score.
+4.  Provide a detailed explanation of your reasoning.
+    *   Reference significant findings from your search.
+    *   Explicitly comment on the perceived authority of the immediate sources.
+    *   **Critically, describe your reasoning about the plausible trust chain for key pieces of evidence.** For instance: "Source A (news article snippet) appears to summarize a government report. While the report itself wasn't directly in the search results, the nature of the claim aligns with typical government publications, lending some confidence. Source B (blog post) references 'studies' vaguely, making its chain to original evidence weaker."
+    *   If link accessibility was an issue, mention this and explain its impact.
 5.  IMPORTANT: If you use the 'internetSearchTool', include the top 2-3 most relevant search results you used in the 'analyzedSources' field of your output. If the tool returns no results or an error, reflect this in your reasoning and score.
 6.  Include the 'searchQueryUsed' in the 'generatedSearchQuery' field of your output.
 
 Output MUST BE a JSON object. Example:
 {
-  "trustScore": 0.6,
-  "reasoning": "DuckDuckGo results for 'Example Claim official sources' showed a Wikipedia page and an .edu domain article. The Wikipedia link was accessible and largely supported the claim. The .edu link snippet was relevant, but the link itself led to a 'page not found' error, so its direct content could not be verified. The presence of an accessible encyclopedic source and a relevant snippet from an academic domain lends moderate credibility, reduced slightly by the inaccessible link.",
+  "trustScore": 0.5,
+  "reasoning": "DuckDuckGo results for 'Example Claim study' included a news site snippet mentioning 'a recent university study' and a Wikipedia article. The news link was accessible but summarized findings without linking the original study. The Wikipedia article cited several sources, one of which was a .edu domain link that was not accessible (page not found). Plausible Trust Chain for News: News -> University Study (not directly seen). Plausible Trust Chain for Wikipedia: Wikipedia -> Multiple sources (some inaccessible). The overall trust is moderate because primary evidence (the study itself) was not directly surfaced by the search, and one key link was broken, requiring reliance on summaries.",
   "analyzedSources": [
-    { "title": "Wikipedia - Example Claim", "link": "https://en.wikipedia.org/wiki/Example_Claim", "snippet": "Wikipedia article discussing the example claim..." },
-    { "title": "University Study on Example Claim - edu.example", "link": "https://www.edu.example/study_example_claim", "snippet": "An academic paper snippet from example.edu (link was not accessible)." }
+    { "title": "News Site: University Study on Example Claim", "link": "https://news.example.com/study_example", "snippet": "A recent university study found that..." },
+    { "title": "Wikipedia - Example Claim", "link": "https://en.wikipedia.org/wiki/Example_Claim", "snippet": "Wikipedia article discussing the example claim, citing [1] University Study, [2] Gov Report..." }
   ],
-  "generatedSearchQuery": "Example Claim official sources"
+  "generatedSearchQuery": "Example Claim study official"
 }`,
 });
 
@@ -206,12 +212,12 @@ const trustChainAnalysisFlow = ai.defineFlow(
       if (queryGenResult.output?.queries && queryGenResult.output.queries.length > 0) {
         generatedQueries = queryGenResult.output.queries;
         primarySearchQuery = generatedQueries[0]; 
-        console.log(`Generated search queries for "${input.claimText.substring(0,50)}...":`, generatedQueries);
+        // console.log(`Generated search queries for "${input.claimText.substring(0,50)}...":`, generatedQueries);
       } else {
-        console.warn(`Could not generate specific search queries for "${input.claimText.substring(0,50)}...", using claim text as query.`);
+        // console.warn(`Could not generate specific search queries for "${input.claimText.substring(0,50)}...", using claim text as query.`);
       }
     } catch (e) {
-      console.error(`Error generating search queries for "${input.claimText.substring(0,50)}...":`, e);
+      // console.error(`Error generating search queries for "${input.claimText.substring(0,50)}...":`, e);
     }
 
     // Step 2: Call the main analysis prompt with the selected search query
@@ -224,7 +230,7 @@ const trustChainAnalysisFlow = ai.defineFlow(
         console.error("Trust chain analysis prompt failed to produce an output for claim:", input.claimText);
         return {
             trustScore: 0,
-            reasoning: "Trust chain analysis failed to produce an output. The LLM might have encountered an issue. No sources could be analyzed.",
+            reasoning: "Trust chain analysis failed to produce an output. The LLM might have encountered an issue. No sources could be analyzed, and no trust chain could be simulated.",
             analyzedSources: [],
             generatedSearchQuery: primarySearchQuery
         };
