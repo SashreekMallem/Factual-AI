@@ -15,16 +15,9 @@ const mapVerdictToStatus = (verdict: 'supported' | 'contradicted' | 'neutral'): 
 
 /**
  * Placeholder for Smart Cache Check.
- * In a full implementation, this would query a vector database (e.g., Pinecone, Chroma)
- * for semantically similar, already verified claims.
- * @param claimText The claim text to check in the cache.
- * @returns A ClaimVerificationResult if a similar claim is found in cache, otherwise null.
  */
 async function checkSmartCache(claimText: string): Promise<ClaimVerificationResult | null> {
   console.log(`Smart Cache Check (Conceptual): Checking cache for claim: "${claimText.substring(0, 50)}..."`);
-  // STUB: In a real implementation, query a vector DB here.
-  // const cachedResult = await vectorDB.findSimilar(claimText);
-  // if (cachedResult && cachedResult.similarity > SOME_THRESHOLD) return cachedResult.data;
   await new Promise(resolve => setTimeout(resolve, 100)); // Simulate async work
   return null; // Simulate cache miss for now
 }
@@ -63,50 +56,93 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
         }
         console.log(`Smart Cache Miss for claim: "${claimText.substring(0,50)}..."`);
 
-        // --- Tier Routing (Conceptual Placeholder) ---
-        // Logic here would determine which verification pipeline to use.
-        // For now, all claims go through the full default pipeline.
-        console.log(`Tier Routing (Conceptual): Default pipeline for claim: "${claimText.substring(0,50)}..."`);
-        // --- End Tier Routing Placeholder ---
-
         let actualSources: MockSource[] = [];
         let trustAnalysisData: ClaimVerificationResult['trustAnalysis'] = undefined;
         let finalExplanation = "No detailed explanation could be generated.";
         let correctedInformation: string | undefined = undefined;
         let finalStatus: ClaimStatus = 'neutral';
-        let explanationFromSubClaims = "Sub-claim analysis was not conclusive or did not provide reasoning.";
+        let explanationFromInitialReasoning = "Initial claim reasoning was not conclusive or did not provide reasoning.";
         let reasoningFromTrustAnalysis = "Trust analysis did not yield specific reasoning.";
         let generatedQueryForTrustAnalysis: string | undefined = undefined;
         let claimQuality: ClaimQualityMetrics | undefined = undefined;
         let verdictConfidenceVal: number | undefined = undefined;
         let nuanceDesc: string | undefined = undefined;
+        let evidenceForExplanation = `Original Claim: "${claimText}"\nOriginal Text (Context): "${text.substring(0, 200)}..."\n`;
 
         try {
           // STAGE 3: Evaluate Claim Quality
           try {
             claimQuality = await evaluateClaimQuality({ claimText, originalText: text });
+            evidenceForExplanation += `\n[Claim Quality Assessment for Original Claim]: ${claimQuality.overallAssessment}\n(Atomicity: ${claimQuality.atomicity}, Fluency: ${claimQuality.fluency}, Decontextualization: ${claimQuality.decontextualization}, Faithfulness: ${claimQuality.faithfulness}, Focus: ${claimQuality.focus}, Check-worthiness: ${claimQuality.checkworthiness})\n`;
           } catch (qualityError) {
             console.warn(`Error evaluating claim quality for "${claimText}":`, qualityError);
-            claimQuality = { // Fallback metrics
+            claimQuality = { 
                 atomicity: 'low', fluency: 'poor', decontextualization: 'low',
                 faithfulness: 'na', focus: 'broad', checkworthiness: 'low',
                 overallAssessment: 'Could not evaluate claim quality due to an error.'
             };
+            evidenceForExplanation += `\n[Claim Quality Assessment for Original Claim]: Error - ${claimQuality.overallAssessment}\n`;
           }
 
-          // STAGE 4: Sub-Claim Reasoning for primary verdict, confidence, and nuance
-          const subClaimResult = await subClaimReasoning({ claim: claimText, maxIterations: 2 });
-          finalStatus = mapVerdictToStatus(subClaimResult.overallVerdict);
-          explanationFromSubClaims = subClaimResult.reasoning || "Sub-claim analysis did not provide detailed reasoning.";
-          verdictConfidenceVal = subClaimResult.verdictConfidence;
-          nuanceDesc = subClaimResult.nuanceDescription;
+          // STAGE 4: Initial Sub-Claim Reasoning for primary verdict, confidence, and nuance
+          const initialReasoningResult = await subClaimReasoning({ claim: claimText, maxIterations: 2 });
+          finalStatus = mapVerdictToStatus(initialReasoningResult.overallVerdict);
+          explanationFromInitialReasoning = initialReasoningResult.reasoning || "Sub-claim analysis did not provide detailed reasoning.";
+          verdictConfidenceVal = initialReasoningResult.verdictConfidence;
+          nuanceDesc = initialReasoningResult.nuanceDescription;
+          const subClaimsIdentifiedForVerification = initialReasoningResult.subClaimsForFurtherVerification;
 
-          // STAGE 5: Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
+          evidenceForExplanation += `\n[Initial Reasoning for Original Claim "${claimText}"]:\nVerdict: ${initialReasoningResult.overallVerdict} (Confidence: ${verdictConfidenceVal?.toFixed(2) ?? 'N/A'}).\nReasoning: ${explanationFromInitialReasoning}\n`;
+          if (nuanceDesc) {
+            evidenceForExplanation += `Nuance/Ambiguity: ${nuanceDesc}\n`;
+          }
+
+          // STAGE 4.5: Recursive Sub-Claim Verification (if identified and confidence is low)
+          const SUB_CLAIM_CONFIDENCE_THRESHOLD = 0.85;
+          let subClaimProcessingEvidenceBundle = "";
+
+          if (
+            subClaimsIdentifiedForVerification &&
+            subClaimsIdentifiedForVerification.length > 0 &&
+            (verdictConfidenceVal === undefined || verdictConfidenceVal < SUB_CLAIM_CONFIDENCE_THRESHOLD)
+          ) {
+            subClaimProcessingEvidenceBundle += `\n\n[SUB-CLAIM VERIFICATION PHASE for original claim: "${claimText}"]\nSystem identified the following sub-claims for further detailed verification:\n`;
+            for (const scText of subClaimsIdentifiedForVerification) {
+              subClaimProcessingEvidenceBundle += `\n--- Verifying Sub-Claim: "${scText}" ---\n`;
+              console.log(`Processing sub-claim: "${scText}" for main claim: "${claimText}"`);
+              try {
+                // A. Perform reasoning for the sub-claim
+                const scReasoningResult = await subClaimReasoning({ claim: scText, maxIterations: 1 }); // Simplified pass for sub-claim
+                subClaimProcessingEvidenceBundle += `  Verdict for Sub-Claim: ${scReasoningResult.overallVerdict} (Confidence: ${scReasoningResult.verdictConfidence.toFixed(2)})\n`;
+                subClaimProcessingEvidenceBundle += `  Reasoning: ${scReasoningResult.reasoning}\n`;
+                if (scReasoningResult.nuanceDescription) {
+                  subClaimProcessingEvidenceBundle += `  Nuance: ${scReasoningResult.nuanceDescription}\n`;
+                }
+
+                // B. Perform trust analysis for the sub-claim
+                const scTrustResult = await analyzeTrustChain({ claimText: scText });
+                subClaimProcessingEvidenceBundle += `  Trust Analysis for Sub-Claim: Score ${scTrustResult.trustScore.toFixed(2)}\n`;
+                subClaimProcessingEvidenceBundle += `  Search Query Used: "${scTrustResult.generatedSearchQuery || 'N/A'}"\n`;
+                subClaimProcessingEvidenceBundle += `  Source Reasoning: ${scTrustResult.reasoning}\n`;
+                if (scTrustResult.analyzedSources && scTrustResult.analyzedSources.length > 0) {
+                   subClaimProcessingEvidenceBundle += `  Key Sources Found: ${scTrustResult.analyzedSources.map(s => `${s.title} (${s.type || 'Unknown'})`).slice(0,2).join('; ')}\n`;
+                } else {
+                   subClaimProcessingEvidenceBundle += `  Key Sources Found: No specific sources highlighted by search API for this sub-claim.\n`;
+                }
+              } catch (scError) {
+                console.warn(`Error verifying sub-claim "${scText}":`, scError);
+                subClaimProcessingEvidenceBundle += `  Error during verification of sub-claim "${scText}": ${scError instanceof Error ? scError.message : String(scError)}\n`;
+              }
+              subClaimProcessingEvidenceBundle += `--- End Sub-Claim: "${scText}" ---\n`;
+            }
+            subClaimProcessingEvidenceBundle += "[END OF SUB-CLAIM VERIFICATION PHASE]\n";
+            evidenceForExplanation += subClaimProcessingEvidenceBundle; // Append to main evidence
+          }
+
+
+          // STAGE 5: Trust Chain Analysis for the original main claim
           try {
-            const trustChainResponse = await analyzeTrustChain({
-              claimText: claimText,
-            });
-            
+            const trustChainResponse = await analyzeTrustChain({ claimText: claimText });
             trustAnalysisData = {
               score: trustChainResponse.trustScore,
               reasoning: trustChainResponse.reasoning,
@@ -115,86 +151,56 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             reasoningFromTrustAnalysis = trustChainResponse.reasoning;
             generatedQueryForTrustAnalysis = trustChainResponse.generatedSearchQuery;
 
-            if (trustChainResponse.analyzedSources && trustChainResponse.analyzedSources.length > 0) {
-              actualSources = trustChainResponse.analyzedSources.map((src, idx) => ({
-                id: `trust-src-${claimId}-${idx}`,
-                url: src.link,
-                title: src.title,
-                shortSummary: src.snippet,
-                type: src.type || 'Unknown',
-              }));
+            evidenceForExplanation += `\n[Trust & Source Analysis for Original Claim "${claimText}"]:\nTrust Score: ${trustAnalysisData?.score?.toFixed(2) ?? 'N/A'}\nReasoning: ${reasoningFromTrustAnalysis}\n`;
+            if (generatedQueryForTrustAnalysis) {
+              evidenceForExplanation += `Search Query Used: "${generatedQueryForTrustAnalysis}"\n`;
+            }
+            if (trustChainResponse.analyzedSources && trustChainResponse.analyzedSources.length > 0 && trustChainResponse.analyzedSources[0].type !== 'NoResult' && trustChainResponse.analyzedSources[0].type !== 'Error' && trustChainResponse.analyzedSources[0].type !== 'NoSpecificResults') {
+                actualSources = trustChainResponse.analyzedSources.map((src, idx_s) => ({
+                  id: `trust-src-${claimId}-${idx_s}`, url: src.link, title: src.title, shortSummary: src.snippet, type: src.type || 'Unknown',
+                }));
+                evidenceForExplanation += `Key Sources Considered (from Search API): ${actualSources.map(s => s.title).slice(0,2).join('; ')}\n`;
             } else {
-                actualSources.push({
-                    id: `fallback-src-${claimId}`,
-                    url: '#',
-                    title: 'No specific sources found by Search API',
-                    shortSummary: 'The live search did not return specific sources for this claim.',
-                    type: 'NoResult'
-                });
+                 evidenceForExplanation += `No specific key sources were highlighted by the trust analysis for the original claim.\n`;
+                 actualSources.push({ id: `fallback-src-${claimId}`, url: '#', title: 'No specific sources found by Search API for main claim', shortSummary: 'The live search did not return specific sources for this claim.', type: 'NoResult'});
             }
           } catch (trustError) {
             console.warn(`Error in Trust Chain Analysis for claim "${claimText}":`, trustError);
-            reasoningFromTrustAnalysis = "Could not perform detailed source analysis due to an error during trust chain analysis.";
-            actualSources.push({ 
-                id: `err-src-${claimId}`, 
-                url: '#', 
-                title: 'Trust Analysis Error', 
-                shortSummary: 'Could not perform detailed source analysis due to an error.',
-                type: 'Error'
-            });
-            trustAnalysisData = {
-              score: 0, 
-              reasoning: "Error during trust analysis execution.",
-              generatedSearchQuery: "Error in query generation/execution"
-            };
+            reasoningFromTrustAnalysis = "Could not perform detailed source analysis due to an error during trust chain analysis for the original claim.";
+            evidenceForExplanation += `\n[Trust & Source Analysis for Original Claim "${claimText}"]:\nError - ${reasoningFromTrustAnalysis}\n`;
+            actualSources.push({ id: `err-src-${claimId}`, url: '#', title: 'Trust Analysis Error for main claim', shortSummary: 'Could not perform detailed source analysis.', type: 'Error'});
+            trustAnalysisData = { score: 0, reasoning: "Error during trust analysis execution for original claim.", generatedSearchQuery: "Error in query generation/execution"};
           }
           
-          // STAGE 6: Generate Final AI Explanation & Correction using combined evidence
-          let evidenceForExplanation = `Claim: "${claimText}"\nOriginal Text (Context): "${text.substring(0, 200)}..."\n`;
-          if (claimQuality) {
-            evidenceForExplanation += `\n[Claim Quality Assessment]: ${claimQuality.overallAssessment}\n(Atomicity: ${claimQuality.atomicity}, Fluency: ${claimQuality.fluency}, Decontextualization: ${claimQuality.decontextualization}, Faithfulness: ${claimQuality.faithfulness}, Focus: ${claimQuality.focus}, Check-worthiness: ${claimQuality.checkworthiness})\n`;
-          }
-          evidenceForExplanation += `\n[Sub-Claim Analysis Verdict]: ${subClaimResult.overallVerdict} (Confidence: ${verdictConfidenceVal?.toFixed(2) ?? 'N/A'}).\nReasoning from Sub-Claims: ${explanationFromSubClaims}\n`;
-          if (nuanceDesc) {
-            evidenceForExplanation += `Nuance/Ambiguity: ${nuanceDesc}\n`;
-          }
-          evidenceForExplanation += `\n[Trust & Source Analysis Trust Score]: ${trustAnalysisData?.score?.toFixed(2) ?? 'N/A'}\nReasoning from Trust/Source Analysis: ${reasoningFromTrustAnalysis}\n`;
-          if (generatedQueryForTrustAnalysis) {
-            evidenceForExplanation += `Search Query Used for Trust Analysis: "${generatedQueryForTrustAnalysis}"\n`;
-          }
-          if (actualSources.length > 0 && actualSources[0].type !== 'NoResult' && actualSources[0].type !== 'Error') {
-              evidenceForExplanation += `Key Sources Considered (from Search API): ${actualSources.map(s => s.title).slice(0,2).join('; ')}.`;
-          } else {
-              evidenceForExplanation += `No specific key sources were highlighted by the trust analysis.`;
-          }
-
+          // STAGE 6: Generate Final AI Explanation & Correction using combined evidence (including sub-claim results)
           try {
             const detailedExplanationResult = await generateExplanation({
-                claim: claimText,
-                evidence: evidenceForExplanation,
-                verdict: subClaimResult.overallVerdict 
+                claim: claimText, // The original claim is the subject of the final explanation
+                evidence: evidenceForExplanation, // This now contains sub-claim verification details
+                verdict: initialReasoningResult.overallVerdict // Initial verdict, LLM can refine in explanation
             });
             finalExplanation = detailedExplanationResult.explanation;
-            if (subClaimResult.overallVerdict === 'contradicted' && detailedExplanationResult.correctedInformation) {
+            // Corrected information logic is now primarily handled within generateExplanation based on the overall evidence
+            if (detailedExplanationResult.correctedInformation) {
               correctedInformation = detailedExplanationResult.correctedInformation;
             }
           } catch (explanationError) {
              console.warn(`Error generating final AI explanation for claim "${claimText}":`, explanationError);
-             finalExplanation = `Error in explanation generation. Sub-Claim Reasoning: ${explanationFromSubClaims}\n\nTrust Analysis Reasoning: ${reasoningFromTrustAnalysis}`;
+             finalExplanation = `Error in final explanation generation. Initial Reasoning: ${explanationFromInitialReasoning}\nTrust Analysis: ${reasoningFromTrustAnalysis}\nSub-Claim Details (if any): ${subClaimProcessingEvidenceBundle || "None"}`;
           }
 
           return {
             id: claimId,
             claimText,
-            status: finalStatus,
+            status: finalStatus, // This status is from the initial reasoning of the main claim. The explanation provides synthesis.
             explanation: finalExplanation,
             correctedInformation: correctedInformation,
             trustAnalysis: trustAnalysisData,
             sources: actualSources,
             isProcessing: false,
             claimQualityMetrics: claimQuality,
-            verdictConfidence: verdictConfidenceVal,
-            nuanceDescription: nuanceDesc,
+            verdictConfidence: verdictConfidenceVal, // Initial confidence for the main claim
+            nuanceDescription: nuanceDesc, // Initial nuance for the main claim
             originalTextContext: text,
           };
         } catch (error)
@@ -229,3 +235,4 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
     }];
   }
 }
+
