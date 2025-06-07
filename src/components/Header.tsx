@@ -8,7 +8,7 @@ export function Header() {
         <div className="flex items-center">
           <ShieldCheck className="h-10 w-10 text-primary mr-3" />
           <h1 className="text-3xl font-headline font-bold text-primary tracking-tight">
-            Verity Engine
+            Factual AI
           </h1>
         </div>
         <div className="flex items-center space-x-2 text-sm text-muted-foreground font-headline">

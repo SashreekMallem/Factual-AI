@@ -4,7 +4,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Verity Engine - Intelligent Fact Verification',
+  title: 'Factual AI - Intelligent Fact Verification',
   description: 'AI-powered, scalable, claim-level fact-verification system for analyzing text and verifying information.',
 };
 
@@ -20,7 +20,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
       </head>
-      <body className="font-body antialiased min-h-screen flex flex-col bg-background">
+      <body className="font-body antialiased min-h-screen flex flex-col bg-gradient-to-br from-background to-muted/60 dark:from-background dark:to-muted/30">
         {children}
         <Toaster />
       </body>

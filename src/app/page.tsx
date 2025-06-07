@@ -10,7 +10,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { verifyClaimsInText } from '@/app/actions';
 import type { ClaimVerificationResult, DisplayedProcessingStep, ProcessingStepStatus } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, Sparkles, Info, CheckCircle, FileText, Search, BarChart3, Brain, Edit3, ListChecks, ShieldCheck, PackageCheck, Hourglass, Zap, SearchCheck, ChevronRight, CircleDotDashed, CircleSlash, Loader2 } from "lucide-react";
+import { Terminal, Sparkles, Info, CheckCircle, FileText, Search, BarChart3, Brain, Edit3, ListChecks, ShieldCheck, PackageCheck, Hourglass, Zap, SearchCheck, ChevronRight, CircleDotDashed, CircleSlash, Loader2, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from '@/components/ui/progress';
 
@@ -18,22 +18,23 @@ const formSchema = z.object({
   text: z.string().min(20).max(5000),
 });
 
-// Base steps definition
-const baseProcessingStepsConfig: Omit<DisplayedProcessingStep, 'id' | 'status' | 'details'>[] = [
-  { text: "Initializing Verity Engine", icon: Zap },
-  { text: "Parsing input text...", icon: FileText },
-  { text: "Extracting potential claims...", icon: Edit3 },
-  // Claim-specific steps will be inserted here
-  { text: "Compiling final verification report...", icon: ListChecks },
-  { text: "Finalizing analysis...", icon: ShieldCheck },
+const initialProcessingSteps: Omit<DisplayedProcessingStep, 'id' | 'status'>[] = [
+  { text: "Initializing Factual AI Cognitive Matrix...", icon: Zap, details: "System waking up..." },
+  { text: "Parsing input text for semantic structure...", icon: FileText, details: "Understanding language..." },
+  { text: "Identifying and extracting potential claims...", icon: Edit3, details: "Pinpointing statements..." },
 ];
 
-const claimSpecificStepTemplates: Omit<DisplayedProcessingStep, 'id' | 'status' | 'details' | 'text'>[] = [
-  { icon: SearchCheck }, // Smart Cache Check
-  { icon: BarChart3 },   // Quality Assessment
-  { icon: Brain },       // Sub-Claim Reasoning
-  { icon: Search },      // Evidence Search & Trust Analysis
-  { icon: Sparkles },    // Generating AI Explanation
+const claimSpecificProcessingSteps = (claimText: string, claimIndex: number): Omit<DisplayedProcessingStep, 'id' | 'status'>[] => [
+  { text: `Checking smart cache for Claim ${claimIndex + 1}...`, icon: SearchCheck, details: `Searching for: "${claimText.substring(0,30)}..."`},
+  { text: `Assessing linguistic quality of Claim ${claimIndex + 1}...`, icon: BarChart3, details: "Evaluating clarity & focus..."},
+  { text: `Initiating sub-claim reasoning for Claim ${claimIndex + 1}...`, icon: Brain, details: "Breaking down complexity..."},
+  { text: `Conducting evidence search & trust analysis for Claim ${claimIndex + 1}...`, icon: Search, details: "Scouring web for evidence..."},
+  { text: `Synthesizing findings & generating AI explanation for Claim ${claimIndex + 1}...`, icon: Sparkles, details: "Formulating verdict..."},
+];
+
+const finalProcessingSteps: Omit<DisplayedProcessingStep, 'id' | 'status'>[] = [
+  { text: "Compiling final verification dossier...", icon: ListChecks, details: "Assembling all findings..." },
+  { text: "Finalizing analysis and preparing report...", icon: ShieldCheck, details: "Almost ready!" },
 ];
 
 
@@ -43,62 +44,33 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [displayedProcessingSteps, setDisplayedProcessingSteps] = useState<DisplayedProcessingStep[]>([]);
   const [currentGlobalStepIndex, setCurrentGlobalStepIndex] = useState(0);
+  const [currentProcessingStepMessage, setCurrentProcessingStepMessage] = useState<DisplayedProcessingStep | null>(null);
   const { toast } = useToast();
 
-  const totalSteps = useMemo(() => {
-    // This is an approximation as claim-specific steps depend on number of claims
-    // Assuming an average of 1-2 claims for progress bar fullness
-    const numClaims = results.length || 1; // Estimate
-    return baseProcessingStepsConfig.length - 2 + (numClaims * claimSpecificStepTemplates.length);
+  const totalStepsForProgressBar = useMemo(() => {
+    const numClaims = results.length > 0 ? results.length : 1; // Estimate 1 claim if none yet for progress bar starting point
+    return initialProcessingSteps.length + (numClaims * claimSpecificProcessingSteps('',0).length) + finalProcessingSteps.length;
   }, [results.length]);
 
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | undefined;
     let masterStepIndex = 0;
-    let currentClaimIndex = 0;
-    let currentClaimStepIndex = 0;
-    let allStepsForCurrentRun: DisplayedProcessingStep[] = [];
-
+    
     if (isProcessing) {
-      // Dynamically build the full list of steps for this run
-      const initialSteps = baseProcessingStepsConfig.slice(0, 3).map((step, idx) => ({
+      const initialStepsWithStatus = initialProcessingSteps.map((step, idx) => ({
         ...step,
         id: `initial-${idx}`,
         status: 'pending' as ProcessingStepStatus,
       }));
-
-      // Placeholder for claim-specific steps - will be updated as claims are extracted
-      // For now, let's assume we'll know the number of claims after extraction for a more accurate timeline
-      // This part would ideally be updated once `extractedClaimStrings` is available in `handleSubmit`
-      // For simplicity in this effect, we'll just use a placeholder or a small number
-      const estimatedClaims = 1; // Or use results.length if it's available and makes sense here
-      let dynamicClaimSteps: DisplayedProcessingStep[] = [];
-      for (let i = 0; i < estimatedClaims; i++) {
-        claimSpecificStepTemplates.forEach((template, stepIdx) => {
-          dynamicClaimSteps.push({
-            ...template,
-            id: `claim-${i}-step-${stepIdx}`,
-            text: `${template.icon === SearchCheck ? 'Checking smart cache for claim ' :
-                     template.icon === BarChart3 ? 'Assessing quality of claim ' :
-                     template.icon === Brain ? 'Reasoning on sub-claims for claim ' :
-                     template.icon === Search ? 'Searching evidence for claim ' :
-                     'Explaining verdict for claim '} ${i + 1}...`,
-            status: 'pending' as ProcessingStepStatus,
-          });
-        });
-      }
-
-      const finalSteps = baseProcessingStepsConfig.slice(3).map((step, idx) => ({
-        ...step,
-        id: `final-${idx}`,
-        status: 'pending' as ProcessingStepStatus,
-      }));
+      // At this point, we don't know the number of claims, so we only add initial steps.
+      // Claim-specific steps will be added dynamically in handleSubmit after claim extraction.
+      // For now, allStepsForCurrentRun will be built up.
+      let allStepsForCurrentRun: DisplayedProcessingStep[] = [...initialStepsWithStatus];
+      setDisplayedProcessingSteps([...allStepsForCurrentRun]);
       
-      allStepsForCurrentRun = [...initialSteps, ...dynamicClaimSteps, ...finalSteps];
-      setDisplayedProcessingSteps(allStepsForCurrentRun.map(s => ({...s}))); // Initial display
+      setCurrentProcessingStepMessage(allStepsForCurrentRun[0] || null);
 
-      masterStepIndex = 0;
       const advanceStep = () => {
         if (masterStepIndex < allStepsForCurrentRun.length) {
           setDisplayedProcessingSteps(prevSteps => {
@@ -108,31 +80,54 @@ export default function Home() {
             }
             if (newSteps[masterStepIndex]) {
                newSteps[masterStepIndex].status = 'in-progress';
+               setCurrentProcessingStepMessage(newSteps[masterStepIndex]);
             }
             return newSteps;
           });
-          setCurrentGlobalStepIndex(masterStepIndex);
+          setCurrentGlobalStepIndex(masterStepIndex + 1); // +1 because index is 0-based
           masterStepIndex++;
         } else {
           clearInterval(intervalId);
-           setDisplayedProcessingSteps(prevSteps => prevSteps.map(s => ({...s, status: s.status === 'in-progress' ? 'completed' : s.status })));
+           setDisplayedProcessingSteps(prevSteps => {
+             const allCompleted = prevSteps.map(s => ({...s, status: s.status === 'in-progress' ? 'completed' : s.status as ProcessingStepStatus }));
+             // Ensure the last message shown is the final completion message or the last step
+             const finalMessageStep = finalProcessingSteps[finalProcessingSteps.length - 1] || allCompleted[allCompleted.length -1];
+             if (finalMessageStep) {
+                setCurrentProcessingStepMessage({
+                    ...finalMessageStep,
+                    id: 'final-completion',
+                    text: "Analysis Complete!",
+                    status: 'completed',
+                    icon: PackageCheck
+                });
+             }
+             return allCompleted;
+           });
         }
       };
       
-      advanceStep(); // Show the first step immediately
-      intervalId = setInterval(advanceStep, 1800); // Adjust timing as needed
+      advanceStep(); 
+      intervalId = setInterval(advanceStep, 1800);
 
     } else {
         // Reset steps when not processing
-        setCurrentGlobalStepIndex(0);
-        if (displayedProcessingSteps.some(s => s.status === 'in-progress' || s.status === 'pending')) {
-             setDisplayedProcessingSteps(prevSteps => prevSteps.map(s => ({ ...s, status: 'completed' })));
+        //setCurrentGlobalStepIndex(0);
+        // If there were steps and the last one was in progress, mark it completed.
+         if (displayedProcessingSteps.length > 0 && displayedProcessingSteps.some(s => s.status === 'in-progress')) {
+            setDisplayedProcessingSteps(prevSteps => prevSteps.map(s => ({ ...s, status: s.status === 'in-progress' ? 'completed' : s.status as ProcessingStepStatus })));
+        }
+        if (results.length > 0 && !error) {
+             setCurrentProcessingStepMessage({ id:'final-done', text: "Verification Dossier Ready", icon: PackageCheck, status: 'completed' });
+        } else if (error) {
+             setCurrentProcessingStepMessage({ id:'final-error', text: "Processing Error Encountered", icon: Terminal, status: 'error' });
+        } else if (!isProcessing && results.length === 0 && displayedProcessingSteps.length === 0){
+             setCurrentProcessingStepMessage(null); // Clear message if starting fresh
         }
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [isProcessing]);
+  }, [isProcessing]); // Dependencies: isProcessing. We handle results/error changes separately in handleSubmit.
 
 
   const handleSubmit = async (data: z.infer<typeof formSchema>) => {
@@ -140,27 +135,48 @@ export default function Home() {
     setError(null);
     setResults([]);
     setCurrentGlobalStepIndex(0);
-    setDisplayedProcessingSteps([]);
-
-
+    
+    // Initial steps are already set by the useEffect when isProcessing becomes true
     toast({
       title: "Verification Protocol Initiated",
-      description: "Verity Engine is decoding your request. This comprehensive analysis may take a moment.",
-      duration: 3000,
+      description: "Factual AI is decoding your request. This comprehensive analysis may take a moment.",
+      duration: 4000,
     });
 
     try {
+      // Simulate the initial steps completing before calling the backend
+      // This logic is now largely handled by the useEffect for isProcessing
+      // We will update the 'allStepsForCurrentRun' within useEffect if needed, or pass a callback
+      // For now, verifyClaimsInText will run, and then we'll update based on its results.
+      
       const verificationResults = await verifyClaimsInText(data.text);
-      setResults(verificationResults); // Set results to trigger re-evaluation of totalSteps if needed
+      setResults(verificationResults);
 
-      // Update displayedProcessingSteps with actual claim count if possible, or mark all as complete
-      setDisplayedProcessingSteps(prevSteps => {
-        // This is tricky because the effect above drives the step-by-step display
-        // For now, just mark all as completed when done. A more robust solution would
-        // involve passing a callback to verifyClaimsInText to update steps during its execution.
-        return prevSteps.map(s => ({ ...s, status: 'completed' as ProcessingStepStatus }));
-      });
+      // Dynamically build the full list of steps for this run, now that we know the number of claims
+      const initialSteps = initialProcessingSteps.map((step, idx) => ({
+        ...step, id: `initial-${idx}`, status: 'completed' as ProcessingStepStatus, // Mark initial as completed
+      }));
 
+      let dynamicClaimSteps: DisplayedProcessingStep[] = [];
+      if (verificationResults.length > 0 && verificationResults[0].id !== 'no_claims_found') {
+        verificationResults.forEach((claim, claimIdx) => {
+          claimSpecificProcessingSteps(claim.claimText, claimIdx).forEach((template, stepIdx) => {
+            dynamicClaimSteps.push({
+              ...template,
+              id: `claim-${claimIdx}-step-${stepIdx}`,
+              status: 'completed' as ProcessingStepStatus, // Mark claim-specific as completed
+            });
+          });
+        });
+      }
+      
+      const finalSystemSteps = finalProcessingSteps.map((step, idx) => ({
+        ...step, id: `final-${idx}`, status: 'completed' as ProcessingStepStatus, // Mark final as completed
+      }));
+      
+      const allCompletedSteps = [...initialSteps, ...dynamicClaimSteps, ...finalSystemSteps];
+      setDisplayedProcessingSteps(allCompletedSteps);
+      setCurrentGlobalStepIndex(allCompletedSteps.length); // Set progress to max
 
       if (verificationResults.some(r => r.status === 'error' && r.id !== 'no_claims_found')) {
         setError("Some claims encountered issues. Please review the detailed report cards below.");
@@ -199,13 +215,13 @@ export default function Home() {
         isProcessing: false,
         sources: []
       }]);
-       setDisplayedProcessingSteps(prevSteps => prevSteps.map(s => ({ ...s, status: s.status === 'in-progress' ? 'error' : s.status })));
+       setDisplayedProcessingSteps(prevSteps => prevSteps.map(s => ({ ...s, status: s.status === 'in-progress' ? 'error' : s.status as ProcessingStepStatus })));
     } finally {
       setIsProcessing(false);
     }
   };
   
-  const progressPercentage = totalSteps > 0 ? ((currentGlobalStepIndex +1) / totalSteps) * 100 : 0;
+  const progressPercentage = totalStepsForProgressBar > 0 ? Math.min(100, (currentGlobalStepIndex / totalStepsForProgressBar) * 100) : 0;
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-background to-muted/60 dark:from-background dark:to-muted/30">
@@ -214,35 +230,39 @@ export default function Home() {
         <div className="max-w-4xl mx-auto space-y-10">
           <ClaimInputForm onSubmit={handleSubmit} isProcessing={isProcessing} />
 
-          {isProcessing && (
-            <div className="mt-8 p-6 bg-card rounded-xl shadow-2xl border border-primary/30">
-              <div className="flex items-center mb-6">
-                <Zap className="h-8 w-8 text-primary mr-3 animate-pulse" />
-                <h2 className="font-headline text-2xl text-primary">AI Cognitive Process Monitor</h2>
+          {(isProcessing || displayedProcessingSteps.length > 0) && (
+            <div className="mt-8 p-6 bg-card/80 backdrop-blur-sm rounded-xl shadow-2xl border border-primary/30">
+              <div className="flex items-center mb-4">
+                 {currentProcessingStepMessage?.icon && <currentProcessingStepMessage.icon className={`h-7 w-7 text-primary mr-3 ${currentProcessingStepMessage.status === 'in-progress' ? 'animate-pulse' : ''}`} />}
+                <h2 className="font-headline text-2xl text-primary">{currentProcessingStepMessage?.text || "Cognitive Process Monitor"}</h2>
               </div>
-              <Progress value={progressPercentage} className="w-full h-2.5 mb-6" indicatorClassName="bg-primary transition-all duration-1000 ease-linear" />
-              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+              {currentProcessingStepMessage?.details && <p className="text-sm text-muted-foreground mb-1 italic">{currentProcessingStepMessage.details}</p>}
+              
+              <Progress value={progressPercentage} className="w-full h-2 mb-6 rounded-full" indicatorClassName={`bg-primary transition-all duration-1500 ease-linear ${isProcessing ? 'animate-pulse' : ''}`} />
+              
+              <div className="space-y-2 max-h-[20rem] overflow-y-auto pr-2 custom-scrollbar">
                 {displayedProcessingSteps.map((step) => {
                   let IconComponent;
-                  switch (step.status) {
-                    case 'completed': IconComponent = CheckCircle; break;
-                    case 'in-progress': IconComponent = Loader2; break;
-                    case 'error': IconComponent = CircleSlash; break;
-                    case 'pending': IconComponent = CircleDotDashed; break;
-                    default: IconComponent = Hourglass;
-                  }
-                  const iconColor = step.status === 'completed' ? 'text-green-500' :
-                                    step.status === 'in-progress' ? 'text-primary animate-spin' :
-                                    step.status === 'error' ? 'text-red-500' :
-                                    'text-muted-foreground opacity-70';
+                  let iconColor = '';
+                  let animationClass = '';
 
+                  switch (step.status) {
+                    case 'completed': IconComponent = CheckCircle2; iconColor = 'text-green-500 dark:text-green-400'; break;
+                    case 'in-progress': IconComponent = Loader2; iconColor = 'text-primary'; animationClass = 'animate-spin'; break;
+                    case 'error': IconComponent = CircleSlash; iconColor = 'text-red-500 dark:text-red-400'; break;
+                    case 'pending': IconComponent = CircleDotDashed; iconColor = 'text-muted-foreground opacity-60'; break;
+                    default: IconComponent = Hourglass; iconColor = 'text-muted-foreground opacity-60';
+                  }
+                  
                   return (
-                    <div key={step.id} className={`flex items-center p-3 rounded-md transition-all duration-300 ease-in-out ${step.status === 'in-progress' ? 'bg-primary/10 scale-105 shadow-lg' : 'bg-muted/50'}`}>
-                      {step.icon && <step.icon className={`mr-3 h-5 w-5 shrink-0 ${iconColor} ${step.status !== 'in-progress' && 'opacity-70'}`} />}
-                      <span className={`font-body text-sm ${step.status === 'completed' ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                    <div key={step.id} className={`flex items-center p-2.5 rounded-lg transition-all duration-300 ease-in-out text-sm
+                                      ${step.status === 'in-progress' ? 'bg-primary/10 scale-102 shadow-md' : 'bg-muted/40 hover:bg-muted/70'}
+                                      ${step.status === 'completed' ? 'opacity-70' : ''}`}>
+                      {step.icon && <step.icon className={`mr-2.5 h-5 w-5 shrink-0 ${iconColor} ${step.status !== 'in-progress' && 'opacity-80'}`} />}
+                      <span className={`font-body flex-grow ${step.status === 'completed' ? 'text-muted-foreground line-through' : 'text-foreground/90'}`}>
                         {step.text}
                       </span>
-                       <IconComponent className={`ml-auto h-5 w-5 shrink-0 ${iconColor}`} />
+                       <IconComponent className={`ml-3 h-5 w-5 shrink-0 ${iconColor} ${animationClass}`} />
                     </div>
                   );
                 })}
@@ -251,7 +271,7 @@ export default function Home() {
           )}
 
           {error && !isProcessing && (
-             <Alert variant="destructive" className="mt-8 shadow-lg rounded-lg">
+             <Alert variant="destructive" className="mt-8 shadow-lg rounded-lg border-l-4 border-red-600">
               <Terminal className="h-5 w-5" />
               <AlertTitle className="font-headline text-lg">Processing Error</AlertTitle>
               <AlertDescription className="font-body text-base">{error}</AlertDescription>
@@ -270,19 +290,19 @@ export default function Home() {
             </div>
           )}
           
-          {!isProcessing && results.length === 0 && !error && (
-            <div className="mt-10 text-center p-8 bg-card rounded-xl shadow-xl border border-border/60">
+          {!isProcessing && results.length === 0 && !error && !displayedProcessingSteps.some(s => s.status !== 'completed' && s.status !== 'pending') && (
+            <div className="mt-10 text-center p-8 bg-card/80 backdrop-blur-sm rounded-xl shadow-xl border border-border/60">
               <Info className="mx-auto h-12 w-12 text-primary/70 mb-4" />
               <h3 className="font-headline text-xl text-foreground mb-2">Awaiting Directives</h3>
               <p className="font-body text-muted-foreground max-w-md mx-auto">
-                Input text into the form above. Verity Engine will initiate its analytical protocols, identify claims, and compile a detailed verification dossier for each.
+                Input text into the form above. Factual AI will initiate its analytical protocols, identify claims, and compile a detailed verification dossier for each.
               </p>
             </div>
           )}
         </div>
       </main>
-      <footer className="py-8 text-center text-sm text-muted-foreground border-t border-border/50 mt-auto bg-card/90">
-        <p className="font-body">&copy; {new Date().getFullYear()} Verity Engine. AI Cognitive Fact Verification Matrix.</p>
+      <footer className="py-6 text-center text-sm text-muted-foreground border-t border-border/50 mt-auto bg-card/90 backdrop-blur-sm">
+        <p className="font-body">&copy; {new Date().getFullYear()} Factual AI. Cognitive Fact Verification Matrix.</p>
         <p className="font-body text-xs mt-1">Constructed with Next.js, ShadCN UI, TailwindCSS, and Genkit AI Framework.</p>
       </footer>
     </div>

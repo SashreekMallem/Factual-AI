@@ -39,14 +39,14 @@ export function ClaimInputForm({ onSubmit, isProcessing }: ClaimInputFormProps) 
   });
 
   return (
-    <Card className="w-full shadow-xl border-transparent overflow-hidden rounded-xl">
+    <Card className="w-full shadow-xl border-transparent overflow-hidden rounded-xl bg-card/80 backdrop-blur-sm">
       <CardHeader className="bg-muted/30 p-6">
         <CardTitle className="font-headline text-2xl text-primary flex items-center">
           <Lightbulb className="mr-3 h-7 w-7" />
           Submit Text for Fact Verification
         </CardTitle>
         <CardDescription className="font-body text-base mt-1">
-          Enter text containing factual claims. Verity Engine will meticulously extract, analyze, and verify each claim using advanced AI.
+          Enter text containing factual claims. Factual AI will meticulously extract, analyze, and verify each claim using advanced AI.
         </CardDescription>
       </CardHeader>
       <CardContent className="p-6">
@@ -61,7 +61,7 @@ export function ClaimInputForm({ onSubmit, isProcessing }: ClaimInputFormProps) 
                   <FormControl>
                     <Textarea
                       placeholder="Example: The Amazon rainforest produces 20% of the world's oxygen. The Great Wall of China is visible from space. Water boils at 100 degrees Celsius at sea level."
-                      className="min-h-[180px] font-body text-base resize-y shadow-inner border-border/70 focus:ring-primary focus:border-primary rounded-lg p-4"
+                      className="min-h-[180px] font-body text-base resize-y shadow-inner bg-background/70 border-border/70 focus:ring-primary focus:border-primary rounded-lg p-4"
                       {...field}
                       disabled={isProcessing}
                     />
@@ -70,9 +70,9 @@ export function ClaimInputForm({ onSubmit, isProcessing }: ClaimInputFormProps) 
                 </FormItem>
               )}
             />
-            <Button 
-              type="submit" 
-              className="w-full sm:w-auto bg-primary hover:bg-primary/80 text-primary-foreground font-headline text-lg py-3.5 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group" 
+            <Button
+              type="submit"
+              className="w-full sm:w-auto bg-primary hover:bg-primary/80 text-primary-foreground font-headline text-lg py-3.5 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group active:scale-95"
               disabled={isProcessing}
             >
               <SearchCode className="mr-2.5 h-5 w-5 group-hover:animate-pulse" />
