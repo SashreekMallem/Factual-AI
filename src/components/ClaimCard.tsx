@@ -1,14 +1,15 @@
 
 'use client';
 
-import { ClaimVerificationResult, ClaimStatus, MockSource } from '@/lib/types';
+import { ClaimVerificationResult, ClaimStatus, MockSource, ClaimQualityMetrics } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info, SearchCheck, ThumbsDown, Send, Search } from 'lucide-react';
+import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info, SearchCheck, ThumbsDown, Send, Search, Microscope, Percent, FileText } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 interface ClaimCardProps {
@@ -60,6 +61,17 @@ const getStatusColorClass = (status: ClaimStatus): string => {
   }
 }
 
+const QualityMetricItem: React.FC<{ label: string; value?: string | number | null; assessment?: string }> = ({ label, value, assessment }) => {
+  if (!value && !assessment) return null;
+  return (
+    <div className="grid grid-cols-3 gap-1 text-xs">
+      <span className="font-semibold col-span-1">{label}:</span>
+      <span className="col-span-2 capitalize">{value || assessment}</span>
+    </div>
+  );
+};
+
+
 export function ClaimCard({ result }: ClaimCardProps) {
   const { toast } = useToast();
 
@@ -81,6 +93,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
   }
   
   const trustScorePercentage = result.trustAnalysis?.score !== undefined ? result.trustAnalysis.score * 100 : null;
+  const verdictConfidencePercentage = result.verdictConfidence !== undefined ? result.verdictConfidence * 100 : null;
 
   const handleDisputeVerdict = () => {
     toast({
@@ -100,14 +113,29 @@ export function ClaimCard({ result }: ClaimCardProps) {
 
 
   return (
+    <TooltipProvider>
     <Card className={`my-6 shadow-lg rounded-lg overflow-hidden border-l-4 ${getStatusColorClass(result.status).split(' ')[1]}`}>
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
           <CardTitle className="font-headline text-xl mb-1 pr-2">{result.claimText}</CardTitle>
-          <Badge variant={getStatusBadgeVariant(result.status)} className={`capitalize whitespace-nowrap px-3 py-1 text-sm ${getStatusColorClass(result.status)}`}>
-            <StatusIcon status={result.status} />
-            <span className="ml-1.5">{result.status}</span>
-          </Badge>
+          <div className="flex flex-col items-end space-y-1">
+            <Badge variant={getStatusBadgeVariant(result.status)} className={`capitalize whitespace-nowrap px-3 py-1 text-sm ${getStatusColorClass(result.status)}`}>
+              <StatusIcon status={result.status} />
+              <span className="ml-1.5">{result.status}</span>
+            </Badge>
+            {verdictConfidencePercentage !== null && (
+               <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-xs px-2 py-0.5 border-primary/50 text-primary/80">
+                    <Percent className="mr-1 h-3 w-3" /> Conf: {verdictConfidencePercentage.toFixed(0)}%
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>AI Confidence in this verdict: {verdictConfidencePercentage.toFixed(0)}%</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
         {result.isProcessing && <CardDescription className="font-body text-sm text-primary">Processing...</CardDescription>}
         {result.errorMessage && <CardDescription className="font-body text-sm text-destructive">Error: {result.errorMessage}</CardDescription>}
@@ -121,9 +149,35 @@ export function ClaimCard({ result }: ClaimCardProps) {
               </AccordionTrigger>
               <AccordionContent className="font-body text-sm leading-relaxed whitespace-pre-wrap p-4 bg-muted/30 rounded-md">
                 {result.explanation}
+                {result.nuanceDescription && (
+                  <div className="mt-3 pt-3 border-t border-border/50">
+                    <p className="font-semibold text-xs text-muted-foreground mb-1">Nuance / Ambiguity:</p>
+                    <p className="italic text-xs">{result.nuanceDescription}</p>
+                  </div>
+                )}
               </AccordionContent>
             </AccordionItem>
           )}
+
+          {result.claimQualityMetrics && (
+            <AccordionItem value="claim-quality">
+              <AccordionTrigger className="font-headline text-base hover:no-underline text-primary">
+                <Microscope className="mr-2 h-5 w-5" /> Claim Quality Analysis
+              </AccordionTrigger>
+              <AccordionContent className="font-body text-sm p-4 bg-muted/30 rounded-md space-y-2">
+                <p className="text-xs italic mb-2">{result.claimQualityMetrics.overallAssessment}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                  <QualityMetricItem label="Atomicity" value={result.claimQualityMetrics.atomicity} />
+                  <QualityMetricItem label="Fluency" value={result.claimQualityMetrics.fluency} />
+                  <QualityMetricItem label="Decontextualization" value={result.claimQualityMetrics.decontextualization} />
+                  <QualityMetricItem label="Faithfulness" value={result.claimQualityMetrics.faithfulness} />
+                  <QualityMetricItem label="Focus" value={result.claimQualityMetrics.focus} />
+                  <QualityMetricItem label="Check-worthiness" value={result.claimQualityMetrics.checkworthiness} />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          )}
+
 
           {result.trustAnalysis && (result.trustAnalysis.reasoning || trustScorePercentage !== null) && (
             <AccordionItem value="trust-analysis">
@@ -183,5 +237,6 @@ export function ClaimCard({ result }: ClaimCardProps) {
         </Button>
       </CardFooter>
     </Card>
+    </TooltipProvider>
   );
 }

@@ -4,8 +4,9 @@
 import { extractClaims } from '@/ai/flows/extract-claims';
 import { subClaimReasoning } from '@/ai/flows/sub-claim-reasoning';
 import { analyzeTrustChain } from '@/ai/flows/trust-chain-analysis';
-import type { ClaimVerificationResult, ClaimStatus, MockSource } from '@/lib/types';
+import type { ClaimVerificationResult, ClaimStatus, MockSource, ClaimQualityMetrics } from '@/lib/types';
 import { generateExplanation } from '@/ai/flows/ai-explanation';
+import { evaluateClaimQuality } from '@/ai/flows/evaluate-claim-quality';
 
 // Helper to map subClaimReasoning verdict to ClaimStatus
 const mapVerdictToStatus = (verdict: 'supported' | 'contradicted' | 'neutral'): ClaimStatus => {
@@ -43,7 +44,8 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
         status: 'neutral',
         explanation: "The system could not identify any specific statements to verify. Please try rephrasing or providing more detailed text.",
         isProcessing: false,
-        sources: []
+        sources: [],
+        originalTextContext: text,
       }];
     }
     
@@ -55,15 +57,15 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
         const cachedResult = await checkSmartCache(claimText);
         if (cachedResult) {
           console.log(`Smart Cache Hit for claim: "${claimText.substring(0,50)}..."`);
-          return { ...cachedResult, id: claimId, isProcessing: false };
+          return { ...cachedResult, id: claimId, isProcessing: false, originalTextContext: text };
         }
         console.log(`Smart Cache Miss for claim: "${claimText.substring(0,50)}..."`);
 
-        // 2. Tier Routing (Conceptual Placeholder)
-        // In a full system, logic here would determine which verification pipeline to use
-        // based on claim complexity, ambiguity, or other factors.
+        // --- Tier Routing (Conceptual Placeholder) ---
+        // Logic here would determine which verification pipeline to use.
         // For now, all claims go through the full default pipeline.
         console.log(`Tier Routing (Conceptual): Default pipeline for claim: "${claimText.substring(0,50)}..."`);
+        // --- End Tier Routing Placeholder ---
 
         let actualSources: MockSource[] = [];
         let trustAnalysisData: ClaimVerificationResult['trustAnalysis'] = undefined;
@@ -72,15 +74,31 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
         let explanationFromSubClaims = "Sub-claim analysis was not conclusive or did not provide reasoning.";
         let reasoningFromTrustAnalysis = "Trust analysis did not yield specific reasoning.";
         let generatedQueryForTrustAnalysis: string | undefined = undefined;
-
+        let claimQuality: ClaimQualityMetrics | undefined = undefined;
+        let verdictConfidenceVal: number | undefined = undefined;
+        let nuanceDesc: string | undefined = undefined;
 
         try {
-          // 3. Sub-Claim Reasoning for primary verdict
+          // Evaluate Claim Quality
+          try {
+            claimQuality = await evaluateClaimQuality({ claimText, originalText: text });
+          } catch (qualityError) {
+            console.warn(`Error evaluating claim quality for "${claimText}":`, qualityError);
+            claimQuality = { // Fallback metrics
+                atomicity: 'low', fluency: 'poor', decontextualization: 'low',
+                faithfulness: 'na', focus: 'broad', checkworthiness: 'low',
+                overallAssessment: 'Could not evaluate claim quality due to an error.'
+            };
+          }
+
+          // Sub-Claim Reasoning for primary verdict, confidence, and nuance
           const subClaimResult = await subClaimReasoning({ claim: claimText, maxIterations: 2 });
           finalStatus = mapVerdictToStatus(subClaimResult.overallVerdict);
           explanationFromSubClaims = subClaimResult.reasoning || "Sub-claim analysis did not provide detailed reasoning.";
+          verdictConfidenceVal = subClaimResult.verdictConfidence;
+          nuanceDesc = subClaimResult.nuanceDescription;
 
-          // 4. Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
+          // Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
           try {
             const trustChainResponse = await analyzeTrustChain({
               claimText: claimText,
@@ -125,10 +143,16 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             };
           }
           
-          // 5. Generate Final AI Explanation using combined evidence
+          // Generate Final AI Explanation using combined evidence
           let evidenceForExplanation = `Claim: "${claimText}"\n`;
-          evidenceForExplanation += `Verdict from Sub-Claim Analysis: ${subClaimResult.overallVerdict}.\nReasoning from Sub-Claims: ${explanationFromSubClaims}\n\n`;
-          evidenceForExplanation += `Verdict from Trust & Source Analysis (Trust Score: ${trustAnalysisData?.score?.toFixed(2) ?? 'N/A'}):\nReasoning from Trust/Source Analysis: ${reasoningFromTrustAnalysis}\n`;
+          if (claimQuality) {
+            evidenceForExplanation += `Claim Quality Assessment: ${claimQuality.overallAssessment}\n(Atomicity: ${claimQuality.atomicity}, Fluency: ${claimQuality.fluency}, Decontextualization: ${claimQuality.decontextualization}, Faithfulness: ${claimQuality.faithfulness}, Focus: ${claimQuality.focus}, Check-worthiness: ${claimQuality.checkworthiness})\n\n`;
+          }
+          evidenceForExplanation += `Verdict from Sub-Claim Analysis: ${subClaimResult.overallVerdict} (Confidence: ${verdictConfidenceVal?.toFixed(2) ?? 'N/A'}).\nReasoning from Sub-Claims: ${explanationFromSubClaims}\n`;
+          if (nuanceDesc) {
+            evidenceForExplanation += `Nuance/Ambiguity: ${nuanceDesc}\n`;
+          }
+          evidenceForExplanation += `\nVerdict from Trust & Source Analysis (Trust Score: ${trustAnalysisData?.score?.toFixed(2) ?? 'N/A'}):\nReasoning from Trust/Source Analysis: ${reasoningFromTrustAnalysis}\n`;
           if (generatedQueryForTrustAnalysis) {
             evidenceForExplanation += `Search Query Used for Trust Analysis: "${generatedQueryForTrustAnalysis}"\n`;
           }
@@ -142,12 +166,11 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             const detailedExplanationResult = await generateExplanation({
                 claim: claimText,
                 evidence: evidenceForExplanation,
-                verdict: subClaimResult.overallVerdict
+                verdict: subClaimResult.overallVerdict 
             });
             finalExplanation = detailedExplanationResult.explanation;
           } catch (explanationError) {
              console.warn(`Error generating final AI explanation for claim "${claimText}":`, explanationError);
-             // Fallback to a combination of available reasoning if final explanation fails
              finalExplanation = `Sub-Claim Reasoning: ${explanationFromSubClaims}\n\nTrust Analysis Reasoning: ${reasoningFromTrustAnalysis}`;
           }
 
@@ -159,6 +182,10 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             trustAnalysis: trustAnalysisData,
             sources: actualSources,
             isProcessing: false,
+            claimQualityMetrics: claimQuality,
+            verdictConfidence: verdictConfidenceVal,
+            nuanceDescription: nuanceDesc,
+            originalTextContext: text,
           };
         } catch (error)
         {
@@ -171,6 +198,8 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
             errorMessage: error instanceof Error ? error.message : String(error),
             isProcessing: false,
             sources: [],
+            originalTextContext: text,
+            claimQualityMetrics: claimQuality, // Include potentially partial quality metrics
           };
         }
       })
@@ -185,7 +214,8 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
       explanation: "An error occurred while trying to process the input text and extract claims.",
       errorMessage: error instanceof Error ? error.message : String(error),
       isProcessing: false,
-      sources: []
+      sources: [],
+      originalTextContext: text,
     }];
   }
 }

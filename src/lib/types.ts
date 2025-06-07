@@ -9,6 +9,16 @@ export interface MockSource {
   shortSummary?: string;
 }
 
+export interface ClaimQualityMetrics {
+  atomicity: 'high' | 'medium' | 'low';
+  fluency: 'good' | 'fair' | 'poor';
+  decontextualization: 'high' | 'medium' | 'low';
+  faithfulness: 'high' | 'medium' | 'low' | 'na';
+  focus: 'specific' | 'neutral' | 'broad';
+  checkworthiness: 'high' | 'medium' | 'low';
+  overallAssessment: string;
+}
+
 export interface ClaimVerificationResult {
   id:string;
   claimText: string;
@@ -17,9 +27,13 @@ export interface ClaimVerificationResult {
   trustAnalysis?: {
     score?: number; 
     reasoning?: string;
-    generatedSearchQuery?: string; // Added to show which query was used
+    generatedSearchQuery?: string;
   };
   sources?: MockSource[]; 
   isProcessing: boolean;
   errorMessage?: string;
+  claimQualityMetrics?: ClaimQualityMetrics;
+  verdictConfidence?: number;
+  nuanceDescription?: string;
+  originalTextContext?: string; // To store the original text for quality evaluation context
 }
