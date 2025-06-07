@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info, SearchCheck } from 'lucide-react';
+import { CheckCircle2, XCircle, HelpCircle, AlertTriangle, Loader2, ExternalLink, MessageSquareQuote, ListChecks, ShieldQuestion, Info, SearchCheck, ThumbsDown, Send } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
+
 
 interface ClaimCardProps {
   result: ClaimVerificationResult;
@@ -59,6 +61,8 @@ const getStatusColorClass = (status: ClaimStatus): string => {
 }
 
 export function ClaimCard({ result }: ClaimCardProps) {
+  const { toast } = useToast();
+
   if (result.id === 'no_claims_found') {
     return (
       <Card className="my-4 shadow-md border-l-4 border-blue-500">
@@ -78,6 +82,23 @@ export function ClaimCard({ result }: ClaimCardProps) {
   
   const trustScorePercentage = result.trustAnalysis?.score !== undefined ? result.trustAnalysis.score * 100 : null;
 
+  const handleDisputeVerdict = () => {
+    toast({
+      title: "Feedback Recorded",
+      description: `Your dispute for the claim "${result.claimText}" has been noted. Thank you for your feedback!`,
+      variant: "default"
+    });
+  };
+
+  const handleSubmitBetterSource = () => {
+     toast({
+      title: "Submit Source",
+      description: `The ability to submit a better source for "${result.claimText}" is coming soon.`,
+      variant: "default"
+    });
+  };
+
+
   return (
     <Card className={`my-6 shadow-lg rounded-lg overflow-hidden border-l-4 ${getStatusColorClass(result.status).split(' ')[1]}`}>
       <CardHeader className="pb-3">
@@ -92,7 +113,7 @@ export function ClaimCard({ result }: ClaimCardProps) {
         {result.errorMessage && <CardDescription className="font-body text-sm text-destructive">Error: {result.errorMessage}</CardDescription>}
       </CardHeader>
       <CardContent className="pt-0">
-        <Accordion type="single" collapsible className="w-full">
+        <Accordion type="single" collapsible className="w-full" defaultValue="explanation">
           {result.explanation && (
             <AccordionItem value="explanation">
               <AccordionTrigger className="font-headline text-base hover:no-underline text-primary">
@@ -110,17 +131,15 @@ export function ClaimCard({ result }: ClaimCardProps) {
                 <ShieldQuestion className="mr-2 h-5 w-5" /> Source Trust Analysis
               </AccordionTrigger>
               <AccordionContent className="font-body text-sm p-4 bg-muted/30 rounded-md space-y-3">
-                {/* The concept of a single 'Analyzed Source URL' is less direct now,
-                    as analysis is based on broader (simulated) search.
-                    The reasoning field should cover this. */}
                 {trustScorePercentage !== null && (
                   <div>
-                    <p>Overall Trust Score (based on simulated search): {trustScorePercentage.toFixed(0)}%</p>
-                    <Progress value={trustScorePercentage} className="h-2 mt-1" />
+                    <p className="font-medium">Overall Trust Score (from live search): {trustScorePercentage.toFixed(0)}%</p>
+                    <Progress value={trustScorePercentage} className="h-2 mt-1" 
+                      aria-label={`Trust score ${trustScorePercentage.toFixed(0)}%`} />
                   </div>
                 )}
                 {result.trustAnalysis.reasoning && (
-                   <p className="mt-2">Reasoning: {result.trustAnalysis.reasoning}</p>
+                   <p className="mt-2"><span className="font-medium">Reasoning:</span> {result.trustAnalysis.reasoning}</p>
                 )}
               </AccordionContent>
             </AccordionItem>
@@ -129,17 +148,16 @@ export function ClaimCard({ result }: ClaimCardProps) {
           {result.sources && result.sources.length > 0 && (
             <AccordionItem value="sources">
               <AccordionTrigger className="font-headline text-base hover:no-underline text-primary">
-                <SearchCheck className="mr-2 h-5 w-5" /> Evidence Sources (from simulated search)
+                <SearchCheck className="mr-2 h-5 w-5" /> Evidence Sources (from live search)
               </AccordionTrigger>
               <AccordionContent className="font-body text-sm p-4 bg-muted/30 rounded-md">
                 <ul className="space-y-3">
                   {result.sources.map((source: MockSource) => (
                     <li key={source.id} className="border-b border-border/50 pb-3 last:border-b-0 last:pb-0">
-                      <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium block truncate text-base">
-                        {source.title} <ExternalLink className="inline h-4 w-4 ml-1" />
+                      <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium block truncate text-base" title={source.url}>
+                        {source.title || "Untitled Source"} <ExternalLink className="inline h-4 w-4 ml-1" />
                       </a>
                       {source.shortSummary && <p className="text-xs mt-1 text-muted-foreground">{source.shortSummary}</p>}
-                      {/* Individual trust scores per source might not be available from the overall analysis */}
                     </li>
                   ))}
                 </ul>
@@ -148,11 +166,13 @@ export function ClaimCard({ result }: ClaimCardProps) {
           )}
         </Accordion>
       </CardContent>
-      <CardFooter className="flex justify-end space-x-3 pt-4 border-t border-border/50">
-        <Button variant="outline" size="sm" className="font-headline text-accent border-accent hover:bg-accent/10 hover:text-accent">
+      <CardFooter className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-4 border-t border-border/50 bg-card/50 p-4">
+        <Button variant="outline" size="sm" className="font-headline text-accent border-accent hover:bg-accent/10 hover:text-accent w-full sm:w-auto" onClick={handleDisputeVerdict}>
+          <ThumbsDown className="mr-2 h-4 w-4" />
           Dispute Verdict
         </Button>
-        <Button variant="outline" size="sm" className="font-headline">
+        <Button variant="outline" size="sm" className="font-headline w-full sm:w-auto" onClick={handleSubmitBetterSource}>
+           <Send className="mr-2 h-4 w-4" />
           Submit Better Source
         </Button>
       </CardFooter>

@@ -34,79 +34,90 @@ export async function verifyClaimsInText(text: string): Promise<ClaimVerificatio
     const results: ClaimVerificationResult[] = await Promise.all(
       extractedClaimStrings.map(async (claimText, index) => {
         const claimId = `claim-${Date.now()}-${index}`;
-        let trustAnalysisData;
         let actualSources: MockSource[] = [];
+        let trustAnalysisData: ClaimVerificationResult['trustAnalysis'] = undefined;
+        let finalExplanation = "No detailed explanation could be generated.";
+        let finalStatus: ClaimStatus = 'neutral';
 
         try {
-          // 1. Sub-Claim Reasoning for primary verdict and explanation
+          // 1. Sub-Claim Reasoning for primary verdict
           const subClaimResult = await subClaimReasoning({ claim: claimText, maxIterations: 2 });
-          
-          let finalStatus = mapVerdictToStatus(subClaimResult.overallVerdict);
-          let finalExplanation = subClaimResult.reasoning;
+          finalStatus = mapVerdictToStatus(subClaimResult.overallVerdict);
+          // Initial explanation from sub-claim reasoning
+          let explanationFromSubClaims = subClaimResult.reasoning || "Sub-claim analysis did not provide a detailed reasoning.";
 
-          // 2. Trust Chain Analysis (using the claim text for search context)
-          // The mockSourceUrl is illustrative of a potential starting point.
-          const mockStartingSourceUrl = `https://en.wikipedia.org/wiki/${claimText.substring(0,20).replace(/\s/g, '_')}`;
-          
+          // 2. Trust Chain Analysis (using the claim text for search context via DuckDuckGo)
+          let reasoningFromTrustAnalysis = "Trust analysis did not yield specific reasoning.";
           try {
             const trustChainResponse = await analyzeTrustChain({
               claimText: claimText,
-              sourceUrl: mockStartingSourceUrl, // This can be used by the LLM as initial context if needed
             });
+            
             trustAnalysisData = {
               score: trustChainResponse.trustScore,
               reasoning: trustChainResponse.reasoning,
-              // sourceUrl is not directly comparable as it's now based on search
             };
+            reasoningFromTrustAnalysis = trustChainResponse.reasoning;
+
             if (trustChainResponse.analyzedSources && trustChainResponse.analyzedSources.length > 0) {
               actualSources = trustChainResponse.analyzedSources.map((src, idx) => ({
                 id: `trust-src-${claimId}-${idx}`,
                 url: src.link,
                 title: src.title,
                 shortSummary: src.snippet,
-                // trustScore per source is not provided by this flow, only an overall score.
               }));
             } else {
-               // Fallback if no sources returned from analysis
                 actualSources.push({
                     id: `fallback-src-${claimId}`,
                     url: '#',
-                    title: 'General Information (from simulated search)',
-                    shortSummary: 'Analysis based on simulated general search.',
+                    title: 'No specific sources found by DuckDuckGo',
+                    shortSummary: 'The live search did not return specific sources for this claim.',
                 });
             }
-
           } catch (trustError) {
             console.warn(`Error in Trust Chain Analysis for claim "${claimText}":`, trustError);
+            reasoningFromTrustAnalysis = "Could not perform detailed source analysis due to an error.";
             actualSources.push({ 
                 id: `err-src-${claimId}`, 
                 url: '#', 
                 title: 'Trust Analysis Error', 
                 shortSummary: 'Could not perform detailed source analysis.'
             });
+            // Keep trustAnalysisData as undefined or with error markers if needed
+            trustAnalysisData = {
+              score: 0, // Default to 0 on error
+              reasoning: "Error during trust analysis."
+            };
           }
           
-          // 3. (Optional) AI Explanation 
-          if (finalStatus === 'neutral' && (!finalExplanation || finalExplanation.length < 50)) {
-             try {
-                const detailedExplanation = await generateExplanation({
-                    claim: claimText,
-                    evidence: trustAnalysisData?.reasoning || "Based on available information and sub-claim analysis.",
-                    verdict: subClaimResult.overallVerdict
-                });
-                finalExplanation = detailedExplanation.explanation;
-             } catch (explanationError) {
-                console.warn(`Error generating detailed explanation for claim "${claimText}":`, explanationError);
-             }
+          // 3. Generate Final AI Explanation using combined evidence
+          let evidenceForExplanation = `Sub-claim Analysis Verdict: ${subClaimResult.overallVerdict}.\nReasoning from sub-claims: ${explanationFromSubClaims}\n\n`;
+          evidenceForExplanation += `Trust & Source Analysis Reasoning: ${reasoningFromTrustAnalysis}\n`;
+          if (actualSources.length > 0 && actualSources[0].id !== `fallback-src-${claimId}` && actualSources[0].id !== `err-src-${claimId}`) {
+              evidenceForExplanation += `Key sources considered: ${actualSources.map(s => s.title).slice(0,2).join('; ')}.`;
+          } else {
+              evidenceForExplanation += `No specific key sources were highlighted by the trust analysis.`;
+          }
+
+          try {
+            const detailedExplanationResult = await generateExplanation({
+                claim: claimText,
+                evidence: evidenceForExplanation,
+                verdict: subClaimResult.overallVerdict
+            });
+            finalExplanation = detailedExplanationResult.explanation;
+          } catch (explanationError) {
+             console.warn(`Error generating final AI explanation for claim "${claimText}":`, explanationError);
+             finalExplanation = explanationFromSubClaims; // Fallback to sub-claim reasoning if final explanation fails
           }
 
           return {
             id: claimId,
             claimText,
             status: finalStatus,
-            explanation: finalExplanation || "No detailed explanation available.",
-            trustAnalysis: trustAnalysisData, // Contains overall trust score and reasoning
-            sources: actualSources, // Now populated from (simulated) search results
+            explanation: finalExplanation,
+            trustAnalysis: trustAnalysisData,
+            sources: actualSources,
             isProcessing: false,
           };
         } catch (error) {
